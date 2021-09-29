@@ -1,6 +1,6 @@
 # Carrot flavered relational database
 
-``` toml
+``` yaml
 schema:
   tables:
     user:
