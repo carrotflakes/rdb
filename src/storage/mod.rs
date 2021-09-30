@@ -1,0 +1,37 @@
+pub mod file;
+pub mod in_memory;
+
+use crate::data::Data;
+
+pub trait Storage: 'static {
+    type Cursor;
+
+    fn source_index(&self, source: &str) -> Option<usize>;
+    fn get_const_cursor_just(&self, source: usize, key: Data) -> Self::Cursor;
+    fn get_const_cursor_range(&self, source: usize, start: usize, end: usize) -> Self::Cursor;
+    fn get_from_cursor(&self, cursor: &Self::Cursor) -> Vec<Data>;
+    fn advance_cursor(&self, cursor: &mut Self::Cursor) -> bool;
+    fn cursor_is_end(&self, cursor: &Self::Cursor) -> bool;
+
+    fn push_row(&mut self, source: usize, data: Vec<Data>) -> Result<(), String>;
+}
+
+pub trait Storage_: 'static {
+    type Cursor;
+    type SourceIndex: Clone + Copy;
+
+    fn source_index(&self, source: &str) -> Option<Self::SourceIndex>;
+    fn get_cursor_just(&self, source_index: Self::SourceIndex, key: Data) -> Self::Cursor;
+    fn get_cursor_range(&self, source_index: Self::SourceIndex, start: usize, end: usize) -> Self::Cursor;
+    
+    fn cursor_get_row(&self, cursor: &Self::Cursor) -> Vec<Data>;
+    fn cursor_advance(&self, cursor: &mut Self::Cursor) -> bool;
+    fn cursor_is_end(&self, cursor: &Self::Cursor) -> bool;
+    fn cursor_delete(&self, cursor: &mut Self::Cursor) -> bool;
+    fn cursor_update(&self, cursor: &mut Self::Cursor, data: Vec<Data>) -> bool;
+
+    fn add_row(&mut self, source_index: Self::SourceIndex, data: Vec<Data>) -> Result<(), String>;
+}
+// レコード検索
+// レコード削除
+// レコード追加

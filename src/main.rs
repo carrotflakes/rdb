@@ -1,11 +1,4 @@
-use rdb::{
-    data::{Data, Type},
-    engine::Engine,
-    front::print_table,
-    query::{ProcessItem, Query, QuerySource},
-    schema,
-    storage::Storage,
-};
+use rdb::{data::{Data, Type}, engine::Engine, front::{print_table, yaml::parse_query_from_yaml}, query::{ProcessItem, Query, QuerySource}, schema, storage::Storage};
 
 fn main() {
     let schema = schema::Schema {
@@ -47,7 +40,7 @@ fn main() {
         ],
     };
 
-    let mut s = rdb::in_memory::InMemory::new();
+    let mut s = rdb::storage::in_memory::InMemory::new();
     s.add_table("user".to_string(), 3);
     s.add_table("message".to_string(), 3);
     dbg!(s
@@ -125,27 +118,45 @@ fn main() {
     print_table(&cs, &vs);
 
     
-    let query = Query {
-        sub_queries: vec![],
-        source: QuerySource {
-            table_name: "message".to_string(),
-            iterate_over: "id".to_string(),
-            from: 0,
-            to: 100,
-        },
-        process: vec![ProcessItem::Join {
-            table_name: "user".to_owned(),
-            left_key: "user_id".to_owned(),
-            right_key: "id".to_owned(),
-        },ProcessItem::Select {
-            columns: vec![
-                ("id".to_owned(), "id".to_owned()),
-                ("text".to_owned(), "text".to_owned()),
-                ("user.name".to_owned(), "user_name".to_owned()),
-            ],
-        }],
-        post_process: vec![],
-    };
+    // let query = Query {
+    //     sub_queries: vec![],
+    //     source: QuerySource {
+    //         table_name: "message".to_string(),
+    //         iterate_over: "id".to_string(),
+    //         from: 0,
+    //         to: 100,
+    //     },
+    //     process: vec![ProcessItem::Join {
+    //         table_name: "user".to_owned(),
+    //         left_key: "user_id".to_owned(),
+    //         right_key: "id".to_owned(),
+    //     },ProcessItem::Select {
+    //         columns: vec![
+    //             ("id".to_owned(), "id".to_owned()),
+    //             ("text".to_owned(), "text".to_owned()),
+    //             ("user.name".to_owned(), "user_name".to_owned()),
+    //         ],
+    //     }],
+    //     post_process: vec![],
+    // };
+    let query = parse_query_from_yaml(r"
+source:
+    table: message
+    iterate:
+        over: id
+process:
+- join:
+    table: user
+    left_key: user_id
+    right_key: id
+- select:
+    -   name: id
+        as: id
+    -   name: text
+        as: text
+    -   name: 'user.name'
+        as: user_name
+").unwrap();
     let (cs, vs) = engine.execute_query(&query).unwrap();
     print_table(&cs, &vs);
 }

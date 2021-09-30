@@ -56,17 +56,13 @@ impl Storage for InMemory {
     fn get_from_cursor(&self, cursor: &Self::Cursor) -> Vec<Data> {
         match cursor {
             InMemoryCursor::Range {
-                table_index,
-                index,
-                end,
+                table_index, index, ..
             } => {
                 let (_name, columns_num, data_vec) = &self.tables[*table_index];
                 data_vec[index * columns_num..(index + 1) * columns_num].to_vec()
             }
             InMemoryCursor::Just {
-                table_index,
-                index,
-                key,
+                table_index, index, ..
             } => {
                 let (_name, columns_num, data_vec) = &self.tables[*table_index];
                 data_vec[index * columns_num..(index + 1) * columns_num].to_vec()
@@ -76,11 +72,7 @@ impl Storage for InMemory {
 
     fn advance_cursor(&self, cursor: &mut Self::Cursor) -> bool {
         match cursor {
-            InMemoryCursor::Range {
-                table_index,
-                index,
-                end,
-            } => {
+            InMemoryCursor::Range { index, end, .. } => {
                 *index += 1;
                 if index < end {
                     true
@@ -110,16 +102,8 @@ impl Storage for InMemory {
 
     fn cursor_is_end(&self, cursor: &Self::Cursor) -> bool {
         match cursor {
-            InMemoryCursor::Range {
-                table_index,
-                index,
-                end,
-            } => *index == usize::MAX,
-            InMemoryCursor::Just {
-                table_index,
-                index,
-                key,
-            } => *index == usize::MAX,
+            InMemoryCursor::Range { index, .. } => *index == usize::MAX,
+            InMemoryCursor::Just { index, .. } => *index == usize::MAX,
         }
     }
 

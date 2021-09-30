@@ -1,4 +1,4 @@
-# Carrot flavered relational database
+# Carrot flavored relational database
 
 ``` yaml
 schema:

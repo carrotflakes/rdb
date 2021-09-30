@@ -1,5 +1,3 @@
-use std::{default, marker::PhantomData};
-
 use crate::{
     data::Data,
     query::{ProcessItem, Query},
@@ -65,7 +63,7 @@ pub struct QueryContext<'a, S: Storage> {
     ended: bool,
 }
 
-type RowAppender<S: Storage> = Box<dyn for<'a> FnMut(&mut QueryContext<'a, S>, Vec<Data>)>;
+type RowAppender<S> = Box<dyn for<'a> FnMut(&mut QueryContext<'a, S>, Vec<Data>)>;
 
 fn build_excecutable_query_process<S: Storage>(
     schema: &Schema,

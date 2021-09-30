@@ -1,3 +1,5 @@
+pub mod yaml;
+
 use crate::data::Data;
 
 pub fn print_table(column_names: &[String], values: &[Data]) {
@@ -8,7 +10,10 @@ pub fn print_table(column_names: &[String], values: &[Data]) {
         if i % column_names.len() == 0 {
             println!();
         }
-        print!("{:?} ", v);
+        match v {
+            Data::U64(v) => print!("{:?} ", v),
+            Data::String(v) => print!("{:?} ", v),
+        }
     }
     println!();
 }
