@@ -1,11 +1,21 @@
 use crate::{
-    btree::{BTree, BTreeNode},
+    btree::{BTree, BTreeNode, Key},
     data::Data,
 };
 
-use super::{pager::Page, File};
+use super::{File, PageImpl, pager::{ PAGE_SIZE}};
 
-impl BTreeNode<Data> for Page {
+pub struct Node {
+    key_size: Option<usize>,
+    value_size: Option<usize>,
+    page: PageImpl,
+}
+
+// [1] leaf flag
+// [4] parent node id
+// [2] size
+
+impl BTreeNode<Data> for PageImpl {
     fn is_leaf(&self) -> bool {
         self[0] == 1
     }
@@ -25,26 +35,27 @@ impl BTreeNode<Data> for Page {
     }
 
     fn size(&self) -> usize {
-        todo!()
+        use std::convert::TryInto;
+        u16::from_le_bytes(self[1 + 4..1 + 4 + 2].as_ref().try_into().unwrap()) as usize
     }
 
     fn is_full(&self) -> bool {
         todo!()
     }
 
-    fn insert(&mut self, key: usize, value: Data) {
+    fn insert(&mut self, key: Key, value: Data) {
         todo!()
     }
 
-    fn insert_node(&mut self, key: usize, node_i: usize) {
+    fn insert_node(&mut self, key: Key, node_i: usize) {
         todo!()
     }
 
-    fn get(&self, key: usize) -> Option<Data> {
+    fn get(&self, key: Key) -> Option<Data> {
         todo!()
     }
 
-    fn get_child(&self, key: usize) -> usize {
+    fn get_child(&self, key: Key) -> usize {
         todo!()
     }
 
@@ -52,7 +63,7 @@ impl BTreeNode<Data> for Page {
         todo!()
     }
 
-    fn remove(&mut self, key: usize) -> bool {
+    fn remove(&mut self, key: Key) -> bool {
         todo!()
     }
 
@@ -61,29 +72,37 @@ impl BTreeNode<Data> for Page {
     }
 
     fn new_internal() -> Self {
-        todo!()
+        [0; PAGE_SIZE as usize].into()
     }
 
-    fn init_as_root(&mut self, key: usize, i1: usize, i2: usize) {
+    fn init_as_root(&mut self, key: Key, i1: usize, i2: usize) {
         todo!()
     }
 }
 
-impl BTree<Data, Page> for File {
-    fn node_ref(&self, i: usize) -> &Page {
-        // self.pager.get_ref(i)
-        todo!()
+impl BTree<Data> for File {
+    type Node = PageImpl;
+
+    fn add_root_node(&mut self) -> usize {
+        let page_i = self.pager.size();
+        self.pager.get_ref(page_i);
+        page_i
     }
 
-    fn node_mut(&mut self, i: usize) -> &mut Page {
-        todo!()
+    fn node_ref(&self, node_i: usize) -> &Self::Node {
+        #[allow(mutable_transmutes)]
+        unsafe { std::mem::transmute::<_, &mut super::pager::Pager<PageImpl>>(&self.pager) }.get_ref(node_i)
     }
 
-    fn push(&mut self, node: Page) -> usize {
-        todo!()
+    fn node_mut(&mut self, node_i: usize) -> &mut Self::Node {
+        self.pager.get_mut(node_i)
     }
 
-    fn swap(&mut self, i: usize, node: Page) -> Page {
-        todo!()
+    fn push(&mut self, node: Self::Node) -> usize {
+        self.pager.push(node)
+    }
+
+    fn swap(&mut self, node_i: usize, node: Self::Node) -> Self::Node {
+        self.pager.swap(node_i, node)
     }
 }

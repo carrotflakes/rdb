@@ -1,3 +1,5 @@
+#![allow(warnings)]
+
 use super::{BTree, BTreeNode};
 
 #[derive(Debug)]
@@ -163,7 +165,18 @@ impl<V: Clone> BTreeNode<V> for IBTreeNode<V> {
     }
 }
 
-impl BTree<String, IBTreeNode<String>> for IBTree {
+impl BTree<String> for IBTree {
+    type Node = IBTreeNode<String>;
+
+    fn add_root_node(&mut self) -> usize {
+        self.pages.push(IBTreeNode {
+            parent: None,
+            keys: vec![],
+            values: Err(vec![]),
+        });
+        self.pages.len() - 1
+    }
+    
     fn node_ref(&self, i: usize) -> &IBTreeNode<String> {
         &self.pages[i]
     }

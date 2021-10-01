@@ -1,4 +1,4 @@
-use crate::{data::Data, storage::Storage};
+use crate::{data::Data, storage::StorageOld};
 
 pub struct InMemory {
     tables: Vec<(String, usize, Vec<Data>)>,
@@ -17,7 +17,7 @@ pub enum InMemoryCursor {
     },
 }
 
-impl Storage for InMemory {
+impl StorageOld for InMemory {
     type Cursor = InMemoryCursor;
 
     fn source_index(&self, source: &str) -> Option<usize> {

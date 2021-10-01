@@ -1,29 +1,34 @@
 mod test;
 
+pub type Key = usize;
+
 pub trait BTreeNode<V: Clone> {
     fn is_leaf(&self) -> bool;
     fn get_parent(&self) -> Option<usize>;
     fn set_parent(&mut self, i: usize);
     fn size(&self) -> usize;
     fn is_full(&self) -> bool;
-    fn insert(&mut self, key: usize, value: V);
-    fn insert_node(&mut self, key: usize, node_i: usize);
-    fn get(&self, key: usize) -> Option<V>;
-    fn get_child(&self, key: usize) -> usize;
+    fn insert(&mut self, key: Key, value: V);
+    fn insert_node(&mut self, key: Key, node_i: usize);
+    fn get(&self, key: Key) -> Option<V>;
+    fn get_child(&self, key: Key) -> usize;
     fn get_children(&self) -> Vec<usize>;
-    fn remove(&mut self, key: usize) -> bool;
+    fn remove(&mut self, key: Key) -> bool;
     fn split_out(&mut self) -> (usize, Self);
     fn new_internal() -> Self;
-    fn init_as_root(&mut self, key: usize, i1: usize, i2: usize);
+    fn init_as_root(&mut self, key: Key, i1: usize, i2: usize);
 }
 
-pub trait BTree<V: Clone, N: BTreeNode<V>> {
-    fn node_ref(&self, i: usize) -> &N;
-    fn node_mut(&mut self, i: usize) -> &mut N;
-    fn push(&mut self, node: N) -> usize;
-    fn swap(&mut self, i: usize, node: N) -> N;
+pub trait BTree<V: Clone> {
+    type Node: BTreeNode<V>;
 
-    fn find(&self, node_i: usize, key: usize) -> Option<V> {
+    fn add_root_node(&mut self) -> usize;
+    fn node_ref(&self, node_i: usize) -> &Self::Node;
+    fn node_mut(&mut self, node_i: usize) -> &mut Self::Node;
+    fn push(&mut self, node: Self::Node) -> usize;
+    fn swap(&mut self, node_i: usize, node: Self::Node) -> Self::Node;
+
+    fn find(&self, node_i: usize, key: Key) -> Option<V> {
         let node = self.node_ref(node_i);
         if node.is_leaf() {
             node.get(key)
@@ -33,7 +38,7 @@ pub trait BTree<V: Clone, N: BTreeNode<V>> {
         }
     }
 
-    fn insert(&mut self, node_i: usize, key: usize, value: V) -> Result<(), String> {
+    fn insert(&mut self, node_i: usize, key: Key, value: V) -> Result<(), String> {
         let node = self.node_mut(node_i);
         if node.is_leaf() {
             if node.is_full() {
@@ -54,7 +59,7 @@ pub trait BTree<V: Clone, N: BTreeNode<V>> {
         }
     }
 
-    fn insert_node(&mut self, node_i: usize, key: usize, node: N) -> Result<usize, String> {
+    fn insert_node(&mut self, node_i: usize, key: Key, node: Self::Node) -> Result<usize, String> {
         if let Some(parent_i) = self.node_ref(node_i).get_parent() {
             let inserted_node_i = self.push(node);
             if self.node_ref(parent_i).is_full() {
@@ -78,7 +83,7 @@ pub trait BTree<V: Clone, N: BTreeNode<V>> {
             Ok(inserted_node_i)
         } else {
             // ルートノードのとき
-            let n = self.swap(node_i, N::new_internal());
+            let n = self.swap(node_i, Self::Node::new_internal());
             let i1 = self.push(n);
             let i2 = self.push(node);
             self.node_mut(i1).set_parent(node_i);
@@ -97,7 +102,7 @@ pub trait BTree<V: Clone, N: BTreeNode<V>> {
         }
     }
 
-    fn remove(&mut self, node_i: usize, key: usize) -> bool {
+    fn remove(&mut self, node_i: usize, key: Key) -> bool {
         let node = self.node_mut(node_i);
         if node.is_leaf() {
             node.remove(key)

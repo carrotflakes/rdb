@@ -1,4 +1,4 @@
-use rdb::{data::{Data, Type}, engine::Engine, front::{print_table, yaml::parse_query_from_yaml}, query::{ProcessItem, Query, QuerySource}, schema, storage::Storage};
+use rdb::{data::{Data, Type}, engine::Engine, front::{print_table, yaml::parse_query_from_yaml}, query::{ProcessItem, Query, QuerySource}, schema, storage::StorageOld};
 
 fn main() {
     let schema = schema::Schema {
@@ -19,6 +19,7 @@ fn main() {
                         dtype: Type::String,
                     },
                 ],
+                primary_key: Some(0),
             },
             schema::Table {
                 name: "message".to_string(),
@@ -36,6 +37,7 @@ fn main() {
                         dtype: Type::String,
                     },
                 ],
+                primary_key: Some(0),
             },
         ],
     };

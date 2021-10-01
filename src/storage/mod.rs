@@ -1,9 +1,9 @@
 pub mod file;
 pub mod in_memory;
 
-use crate::data::Data;
+use crate::{data::Data, schema::{self, Schema}};
 
-pub trait Storage: 'static {
+pub trait StorageOld: 'static {
     type Cursor;
 
     fn source_index(&self, source: &str) -> Option<usize>;
@@ -16,13 +16,15 @@ pub trait Storage: 'static {
     fn push_row(&mut self, source: usize, data: Vec<Data>) -> Result<(), String>;
 }
 
-pub trait Storage_: 'static {
+pub trait Storage: 'static {
     type Cursor;
     type SourceIndex: Clone + Copy;
 
-    fn source_index(&self, source: &str) -> Option<Self::SourceIndex>;
-    fn get_cursor_just(&self, source_index: Self::SourceIndex, key: Data) -> Self::Cursor;
-    fn get_cursor_range(&self, source_index: Self::SourceIndex, start: usize, end: usize) -> Self::Cursor;
+    fn schema(&self) -> &Schema;
+    fn add_table(&mut self, table: schema::Table);
+
+    fn source_index(&self, table_name: &str, key_column_indices: &[usize]) -> Option<Self::SourceIndex>;
+    fn get_cursor_just(&self, source_index: Self::SourceIndex, key: &[Data]) -> Self::Cursor;
     
     fn cursor_get_row(&self, cursor: &Self::Cursor) -> Vec<Data>;
     fn cursor_advance(&self, cursor: &mut Self::Cursor) -> bool;
@@ -32,6 +34,3 @@ pub trait Storage_: 'static {
 
     fn add_row(&mut self, source_index: Self::SourceIndex, data: Vec<Data>) -> Result<(), String>;
 }
-// レコード検索
-// レコード削除
-// レコード追加

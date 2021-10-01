@@ -2,15 +2,15 @@ use crate::{
     data::Data,
     query::{ProcessItem, Query},
     schema::Schema,
-    storage::Storage,
+    storage::StorageOld,
 };
 
-pub struct Engine<S: Storage> {
+pub struct Engine<S: StorageOld> {
     schema: Schema,
     storage: S,
 }
 
-impl<S: Storage> Engine<S> {
+impl<S: StorageOld> Engine<S> {
     pub fn new(schema: Schema, storage: S) -> Self {
         Self { schema, storage }
     }
@@ -58,14 +58,14 @@ impl<S: Storage> Engine<S> {
     }
 }
 
-pub struct QueryContext<'a, S: Storage> {
+pub struct QueryContext<'a, S: StorageOld> {
     storage: &'a S,
     ended: bool,
 }
 
 type RowAppender<S> = Box<dyn for<'a> FnMut(&mut QueryContext<'a, S>, Vec<Data>)>;
 
-fn build_excecutable_query_process<S: Storage>(
+fn build_excecutable_query_process<S: StorageOld>(
     schema: &Schema,
     storage: &S,
     columns: Vec<String>,

@@ -1,15 +1,27 @@
+use std::{fs::File, io::Cursor};
+
 pub const PAGE_SIZE: u64 = 4 * 1024;
 
-pub type Page = [u8; PAGE_SIZE as usize];
+pub type PageRaw = [u8; PAGE_SIZE as usize];
 
-pub struct Pager {
-    pub(crate) file: std::io::Cursor<std::fs::File>,
-    pub(crate) file_len: u64,
-    pub(crate) pages: Vec<Option<Page>>,
-    pub(crate) pages_num: usize,
+pub trait Page:
+    From<PageRaw> + std::ops::Deref<Target = PageRaw> + std::ops::DerefMut<Target = PageRaw>
+{
 }
 
-impl Pager {
+impl<
+        P: From<PageRaw> + std::ops::Deref<Target = PageRaw> + std::ops::DerefMut<Target = PageRaw>,
+    > Page for P
+{
+}
+
+pub struct Pager<P: Page> {
+    file: Cursor<File>,
+    file_len: u64,
+    pages: Vec<Option<P>>,
+}
+
+impl<P: Page> Pager<P> {
     pub fn open(filepath: &str) -> Self {
         let file = std::fs::OpenOptions::new()
             .read(true)
@@ -18,18 +30,28 @@ impl Pager {
             .open(filepath)
             .unwrap();
         let file_len = file.metadata().unwrap().len();
-        let file = std::io::Cursor::new(file);
+        let file = Cursor::new(file);
         let pages_num = (file_len / PAGE_SIZE) as usize;
 
         Self {
             file,
             file_len,
-            pages: vec![None; pages_num],
-            pages_num,
+            pages: (0..pages_num).map(|_| None).collect(),
         }
     }
 
-    pub fn get_ref(&mut self, i: usize) -> &Page {
+    pub fn size(&self) -> usize {
+        self.pages.len()
+    }
+
+    pub fn get_ref(&mut self, i: usize) -> &P {
+        self.get_mut(i)
+    }
+
+    pub fn get_mut(&mut self, i: usize) -> &mut P {
+        if self.pages.len() == i {
+            self.pages.push(Some(P::from([0; PAGE_SIZE as usize])));
+        }
         if self.pages[i].is_none() {
             let mut pages_num = (self.file_len / PAGE_SIZE) as usize;
             if self.file_len % PAGE_SIZE != 0 {
@@ -40,33 +62,19 @@ impl Pager {
                 self.file.set_position(i as u64 * PAGE_SIZE);
                 let mut buf = [0; PAGE_SIZE as usize];
                 std::io::Read::read(self.file.get_mut(), &mut buf).unwrap();
-                self.pages[i] = Some(buf);
-            }
-            if i >= self.pages_num {
-                self.pages_num = i + 1;
-            }
-        }
-        self.pages[i].as_ref().unwrap()
-    }
-
-    pub fn get_mut(&mut self, i: usize) -> &mut Page {
-        if self.pages[i].is_none() {
-            let mut pages_num = (self.file_len / PAGE_SIZE) as usize;
-            if self.file_len % PAGE_SIZE != 0 {
-                pages_num += 1;
-            }
-
-            if i <= pages_num {
-                self.file.set_position(i as u64 * PAGE_SIZE);
-                let mut buf = [0; PAGE_SIZE as usize];
-                std::io::Read::read(self.file.get_mut(), &mut buf).unwrap();
-                self.pages[i] = Some(buf);
-            }
-            if i >= self.pages_num {
-                self.pages_num = i + 1;
+                self.pages[i] = Some(P::from(buf));
             }
         }
         self.pages[i].as_mut().unwrap()
+    }
+
+    pub fn push(&mut self, page: P) -> usize {
+        self.pages.push(Some(page));
+        self.pages.len() - 1
+    }
+
+    pub fn swap(&mut self, i: usize, page: P) -> P {
+        self.pages[i].replace(page).unwrap()
     }
 
     pub fn save(&mut self) {
@@ -85,11 +93,11 @@ impl Pager {
 
 // #[test]
 // fn test() {
-//     let mut pager = Pager::open("hello");
-//     let page = pager.get(0);
-//     dbg!(&page.borrow().as_ref()[0..10]);
-//     page.borrow_mut()[0] = 1;
-//     page.borrow_mut()[1] = 2;
-//     page.borrow_mut()[2] = 3;
+//     let mut pager = Pager::<PageRaw>::open("hello");
+//     let page = pager.get_mut(0);
+//     dbg!(&page.as_ref()[0..10]);
+//     page.as_mut()[0] = 1;
+//     page.as_mut()[1] = 2;
+//     page.as_mut()[2] = 3;
 //     pager.save();
 // }

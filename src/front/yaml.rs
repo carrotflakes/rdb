@@ -39,10 +39,26 @@ pub fn parse_query_from_yaml(src: &str) -> Result<Query, serde_yaml::Error> {
     })
 }
 
-mod mapping {
-    use serde::Deserialize;
+pub fn query_to_yaml(query: &Query) -> String {
+    serde_yaml::to_string(&mapping::Query {
+        source: mapping::QuerySource {
+            table: query.source.table_name.clone(),
+            iterate: mapping::QuerySourceIterate {
+                over: query.source.iterate_over.clone(),
+                from: None,
+                to: None,
+            },
+        },
+        process: todo!(),
+        post_process: vec![],
+    })
+    .unwrap()
+}
 
-    #[derive(Debug, Clone, Deserialize)]
+mod mapping {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
     pub struct Query {
         pub source: QuerySource,
@@ -52,14 +68,14 @@ mod mapping {
         pub post_process: Vec<PostProcessItem>,
     }
 
-    #[derive(Debug, Clone, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
     pub struct QuerySource {
         pub table: String,
         pub iterate: QuerySourceIterate,
     }
 
-    #[derive(Debug, Clone, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
     pub struct QuerySourceIterate {
         pub over: String,
@@ -67,7 +83,7 @@ mod mapping {
         pub to: Option<usize>,
     }
 
-    #[derive(Debug, Clone, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
     pub enum ProcessItem {
         Select(Vec<ProcessSelectColumn>),
@@ -82,14 +98,14 @@ mod mapping {
         },
     }
 
-    #[derive(Debug, Clone, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
     pub struct ProcessSelectColumn {
         pub name: String,
         pub r#as: String,
     }
 
-    #[derive(Debug, Clone, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
     pub enum PostProcessItem {
         SortBy { column_name: String },
