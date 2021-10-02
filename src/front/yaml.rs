@@ -1,11 +1,11 @@
 use crate::{
     data::Data,
-    query::{ProcessItem, Query, QuerySource},
+    query::{Insert, ProcessItem, Select, SelectSource},
 };
 
-pub fn parse_query_from_yaml(src: &str) -> Result<Query, serde_yaml::Error> {
+pub fn parse_select_from_yaml(src: &str) -> Result<Select, serde_yaml::Error> {
     let query: mapping::Query = serde_yaml::from_str(src)?;
-    Ok(Query {
+    Ok(Select {
         sub_queries: vec![],
         source: match query.source.iterate {
             mapping::QuerySourceIterate {
@@ -13,13 +13,11 @@ pub fn parse_query_from_yaml(src: &str) -> Result<Query, serde_yaml::Error> {
                 from,
                 to,
                 just: None,
-            } => QuerySource {
+            } => SelectSource {
                 table_name: query.source.table,
                 keys: over,
-                from: from
-                    .map(|x| x.into_iter().map(string_to_data).collect()),
-                to: to
-                    .map(|x| x.into_iter().map(string_to_data).collect()),
+                from: from.map(|x| x.into_iter().map(string_to_data).collect()),
+                to: to.map(|x| x.into_iter().map(string_to_data).collect()),
             },
             mapping::QuerySourceIterate {
                 over,
@@ -28,16 +26,17 @@ pub fn parse_query_from_yaml(src: &str) -> Result<Query, serde_yaml::Error> {
                 just: Some(just),
             } => {
                 let just = Some(just.into_iter().map(string_to_data).collect());
-                QuerySource {
-                table_name: query.source.table,
-                keys: over,
-                from: just.clone(),
-                to: just,
-            }},
+                SelectSource {
+                    table_name: query.source.table,
+                    keys: over,
+                    from: just.clone(),
+                    to: just,
+                }
+            }
             _ => {
                 panic!("unexpected iterate")
             }
-        } ,
+        },
         process: query
             .process
             .into_iter()
@@ -75,7 +74,7 @@ pub fn string_to_data(str: String) -> Data {
     }
 }
 
-pub fn query_to_yaml(query: &Query) -> String {
+pub fn query_to_yaml(query: &Select) -> String {
     serde_yaml::to_string(&mapping::Query {
         source: mapping::QuerySource {
             table: query.source.table_name.clone(),
@@ -92,7 +91,23 @@ pub fn query_to_yaml(query: &Query) -> String {
     .unwrap()
 }
 
+pub fn parse_insert_from_yaml(src: &str) -> Result<Insert, serde_yaml::Error> {
+    let query: mapping::Insert = serde_yaml::from_str(src)?;
+    Ok(Insert {
+        table_name: query.table,
+        column_names: query.row.keys().map(|s| s.to_owned()).collect(),
+        values: query
+            .row
+            .values()
+            .map(|s| s.to_owned())
+            .map(string_to_data)
+            .collect(),
+    })
+}
+
 mod mapping {
+    use std::collections::HashMap;
+
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,5 +164,12 @@ mod mapping {
         SortBy { column_name: String },
         Skip { num: usize },
         Limit { num: usize },
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub struct Insert {
+        pub table: String,
+        pub row: HashMap<String, String>,
     }
 }

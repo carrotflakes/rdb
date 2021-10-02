@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::data::Type;
+use crate::data::{Data, Type};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Schema {
@@ -20,6 +20,7 @@ pub struct Table {
 pub struct Column {
     pub name: String,
     pub dtype: Type,
+    pub default: Option<Data>,
 }
 
 impl Schema {
@@ -75,5 +76,9 @@ impl Table {
             .iter()
             .position(|c| c.name == name)
             .map(|i| (i, &self.columns[i]))
+    }
+
+    pub fn check_row_is_legal(&self, row: &Vec<Data>) -> Result<(), String> {
+        todo!()
     }
 }

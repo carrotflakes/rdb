@@ -1,15 +1,15 @@
 use crate::data::Data;
 
 #[derive(Debug, Clone)]
-pub struct Query {
-    pub sub_queries: Vec<(String, Query)>,
-    pub source: QuerySource,
+pub struct Select {
+    pub sub_queries: Vec<(String, Select)>,
+    pub source: SelectSource,
     pub process: Vec<ProcessItem>,
     pub post_process: Vec<PostProcessItem>,
 }
 
 #[derive(Debug, Clone)]
-pub struct QuerySource {
+pub struct SelectSource {
     pub table_name: String,
     pub keys: Vec<String>,
     pub from: Option<Vec<Data>>,
@@ -49,4 +49,24 @@ pub enum PostProcessItem {
     SortBy { column_name: String },
     Skip { num: usize },
     Limit { num: usize },
+}
+
+#[derive(Debug, Clone)]
+pub struct Insert {
+    pub table_name: String,
+    pub column_names: Vec<String>,
+    pub values: Vec<Data>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Delete {
+    pub table_name: String,
+    pub source: SelectSource,
+    // TODO: filter
+}
+
+#[derive(Debug, Clone)]
+pub struct Update {
+    pub table_name: String,
+    // TODO
 }

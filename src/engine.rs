@@ -1,6 +1,6 @@
 use crate::{
     data::Data,
-    query::{ProcessItem, Query},
+    query::{self, ProcessItem, Select},
     schema::Schema,
     storage::Storage,
 };
@@ -15,7 +15,7 @@ impl<S: Storage> Engine<S> {
         Self { schema, storage }
     }
 
-    pub fn execute_query(&self, query: &Query) -> Result<(Vec<String>, Vec<Data>), String> {
+    pub fn execute_select(&self, query: &Select) -> Result<(Vec<String>, Vec<Data>), String> {
         let mut rows = vec![];
         let appender: RowAppender<_> = {
             let rows = unsafe { std::mem::transmute::<*mut Vec<Data>, &mut Vec<Data>>(&mut rows) };
@@ -78,6 +78,27 @@ impl<S: Storage> Engine<S> {
             }
         }
         Ok((columns, rows))
+    }
+
+    pub fn execute_insert(&mut self, insert: &query::Insert) -> Result<(), String> {
+        let values = self
+            .schema
+            .get_table(&insert.table_name)
+            .unwrap()
+            .1
+            .columns
+            .iter()
+            .map(|column| {
+                if let Some(i) = insert.column_names.iter().position(|n| &column.name == n) {
+                    insert.values[i].clone()
+                } else if let Some(default) = &column.default {
+                    default.clone()
+                } else {
+                    panic!("no default")
+                }
+            })
+            .collect();
+        self.storage.add_row(&insert.table_name, values)
     }
 }
 
@@ -168,7 +189,9 @@ fn build_excecutable_query_process<S: Storage>(
                     .iter()
                     .position(|c| &c.name == right_key)
                     .unwrap();
-                let source_index = storage.source_index(table_name, &[right_key.clone()]).unwrap(); // TODO!
+                let source_index = storage
+                    .source_index(table_name, &[right_key.clone()])
+                    .unwrap(); // TODO!
                 appender = Box::new(move |ctx, row| {
                     let mut cursor = ctx
                         .storage

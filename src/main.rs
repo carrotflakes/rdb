@@ -1,8 +1,11 @@
 use rdb::{
     data::{Data, Type},
     engine::Engine,
-    front::{print_table, yaml::parse_query_from_yaml},
-    query::{ProcessItem, Query, QuerySource},
+    front::{
+        print_table,
+        yaml::{parse_insert_from_yaml, parse_select_from_yaml},
+    },
+    query::{Insert, ProcessItem, Select, SelectSource},
     schema,
     storage::Storage,
 };
@@ -16,14 +19,17 @@ fn main() {
                     schema::Column {
                         name: "id".to_string(),
                         dtype: Type::U64,
+                        default: None,
                     },
                     schema::Column {
                         name: "name".to_string(),
                         dtype: Type::String,
+                        default: None,
                     },
                     schema::Column {
                         name: "email".to_string(),
                         dtype: Type::String,
+                        default: None,
                     },
                 ],
                 primary_key: Some(0),
@@ -34,14 +40,17 @@ fn main() {
                     schema::Column {
                         name: "id".to_string(),
                         dtype: Type::U64,
+                        default: None,
                     },
                     schema::Column {
                         name: "user_id".to_string(),
                         dtype: Type::U64,
+                        default: None,
                     },
                     schema::Column {
                         name: "text".to_string(),
                         dtype: Type::String,
+                        default: None,
                     },
                 ],
                 primary_key: Some(0),
@@ -90,26 +99,12 @@ fn main() {
         ],
     )
     .unwrap();
-    s.add_row(
-        "message",
-        vec![
-            Data::U64(2),
-            Data::U64(2),
-            Data::String("hello!".to_string()),
-        ],
-    )
-    .unwrap();
-
-    // let mut c = s.get_const_cursor_range(s.source_index("user").unwrap(), 0, 100);
-    // dbg!(s.get_from_cursor(&c));
-    // s.advance_cursor(&mut c);
-    // // dbg!(s.get_from_cursor(&c));
 
     let mut engine = Engine::new(schema, s);
 
-    let query = Query {
+    let query = Select {
         sub_queries: vec![],
-        source: QuerySource {
+        source: SelectSource {
             table_name: "user".to_string(),
             keys: vec!["id".to_string()],
             from: Some(vec![Data::U64(0)]),
@@ -123,8 +118,31 @@ fn main() {
         }],
         post_process: vec![],
     };
-    let (cs, vs) = engine.execute_query(&query).unwrap();
+    let (cs, vs) = engine.execute_select(&query).unwrap();
     print_table(&cs, &vs);
+
+    engine
+        .execute_insert(&Insert {
+            table_name: "message".to_owned(),
+            column_names: vec!["id".to_owned(), "user_id".to_owned(), "text".to_owned()],
+            values: vec![Data::U64(4), Data::U64(1), Data::String("I'm not a cat!".to_owned())],
+        })
+        .unwrap();
+
+    engine
+        .execute_insert(
+            &parse_insert_from_yaml(
+                r"
+table: message
+row:
+    id: 2
+    user_id: 2
+    text: hello!
+",
+            )
+            .unwrap(),
+        )
+        .unwrap();
 
     // let query = Query {
     //     sub_queries: vec![],
@@ -147,7 +165,7 @@ fn main() {
     //     }],
     //     post_process: vec![],
     // };
-    let query = parse_query_from_yaml(
+    let query = parse_select_from_yaml(
         r"
 source:
     table: message
@@ -169,6 +187,6 @@ process:
 ",
     )
     .unwrap();
-    let (cs, vs) = engine.execute_query(&query).unwrap();
+    let (cs, vs) = engine.execute_select(&query).unwrap();
     print_table(&cs, &vs);
 }
