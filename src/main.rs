@@ -54,7 +54,7 @@ fn main() {
     s.add_table(schema.tables[1].clone());
     dbg!(s
         .add_row(
-            0,
+            "user",
             vec![
                 Data::U64(1),
                 Data::String("niko".to_string()),
@@ -64,7 +64,7 @@ fn main() {
         .unwrap());
     dbg!(s
         .add_row(
-            0,
+            "user",
             vec![
                 Data::U64(2),
                 Data::String("ralsei".to_string()),
@@ -73,7 +73,7 @@ fn main() {
         )
         .unwrap());
     s.add_row(
-        1,
+        "message",
         vec![
             Data::U64(1),
             Data::U64(1),
@@ -82,20 +82,20 @@ fn main() {
     )
     .unwrap();
     s.add_row(
-        1,
-        vec![
-            Data::U64(2),
-            Data::U64(2),
-            Data::String("hello!".to_string()),
-        ],
-    )
-    .unwrap();
-    s.add_row(
-        1,
+        "message",
         vec![
             Data::U64(3),
             Data::U64(1),
             Data::String("hello!!".to_string()),
+        ],
+    )
+    .unwrap();
+    s.add_row(
+        "message",
+        vec![
+            Data::U64(2),
+            Data::U64(2),
+            Data::String("hello!".to_string()),
         ],
     )
     .unwrap();
@@ -111,9 +111,9 @@ fn main() {
         sub_queries: vec![],
         source: QuerySource {
             table_name: "user".to_string(),
-            iterate_over: "id".to_string(),
-            from: Some(Data::U64(0)),
-            to: Some(Data::U64(100)),
+            keys: vec!["id".to_string()],
+            from: Some(vec![Data::U64(0)]),
+            to: Some(vec![Data::U64(100)]),
         },
         process: vec![ProcessItem::Select {
             columns: vec![
@@ -152,7 +152,8 @@ fn main() {
 source:
     table: message
     iterate:
-        over: id
+        over:
+        -   id
 process:
 - join:
     table: user

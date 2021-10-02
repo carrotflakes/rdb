@@ -28,10 +28,10 @@ query
     - ...
   source:
     table: user
-    iterate:
-      over: id
-      from: 0
-      to: 100
+    keys:
+    - id
+    just:
+    - 1
   process:
     - select:
       - id

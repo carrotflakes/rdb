@@ -23,15 +23,14 @@ impl<S: Storage> Engine<S> {
                 rows.extend(row);
             })
         };
-        let columns = self
-            .schema
-            .get_table(&query.source.table_name)
-            .unwrap()
-            .1
-            .columns
-            .iter()
-            .map(|c| c.name.to_owned())
-            .collect();
+
+        let table = if let Some((_, table)) = self.schema.get_table(&query.source.table_name) {
+            table
+        } else {
+            return Err(format!("missing table"));
+        };
+
+        let columns = table.columns.iter().map(|c| c.name.to_owned()).collect();
         let (columns, mut appender) = build_excecutable_query_process(
             &self.schema,
             &self.storage,
@@ -42,28 +41,42 @@ impl<S: Storage> Engine<S> {
 
         let source = self
             .storage
-            .source_index(&query.source.table_name, &[])
+            .source_index(&table.name, &query.source.keys)
             .unwrap();
-        // let is_just = query.source.from.is_some();
-        // let mut cursor = self.storage.get_cursor_just(
-        //     source,
-        //     &vec![query.source.from.clone().unwrap_or(Data::U64(0))],
-        // );
-        let mut cursor = self.storage.get_cursor_first(source);
+        let mut cursor = if let Some(from) = &query.source.from {
+            self.storage.get_cursor_just(source, from)
+        } else {
+            self.storage.get_cursor_first(source)
+        };
+        let end_check_columns = query.source.to.as_ref().map(|to| {
+            (
+                query
+                    .source
+                    .keys
+                    .iter()
+                    .map(|name| table.get_column(name).unwrap().0)
+                    .collect::<Vec<_>>(),
+                to.clone(),
+            )
+        });
         let mut ctx = QueryContext {
             storage: &self.storage,
             ended: false,
         };
-        while !ctx.ended && !self.storage.cursor_is_end(&cursor) && {
+        while !ctx.ended && !self.storage.cursor_is_end(&cursor) {
             if let Some(row) = self.storage.cursor_get_row(&cursor) {
-                // check end...!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                if let Some((cs, to)) = &end_check_columns {
+                    let now = cs.iter().map(|i| row[*i].clone()).collect::<Vec<_>>();
+                    if to < &now {
+                        break;
+                    }
+                }
                 appender(&mut ctx, row);
-                self.storage.cursor_advance(&mut cursor)
+                self.storage.cursor_advance(&mut cursor);
             } else {
-                false
+                break;
             }
-        } {}
-
+        }
         Ok((columns, rows))
     }
 }
@@ -150,8 +163,12 @@ fn build_excecutable_query_process<S: Storage>(
             } => {
                 let left_i = post_columns.iter().position(|c| c == left_key).unwrap();
                 let (_, table) = schema.get_table(table_name).unwrap();
-                let right_i = table.columns.iter().position(|c| &c.name == right_key).unwrap();
-                let source_index = storage.source_index(table_name, &[right_i]).unwrap(); // TODO!
+                let right_i = table
+                    .columns
+                    .iter()
+                    .position(|c| &c.name == right_key)
+                    .unwrap();
+                let source_index = storage.source_index(table_name, &[right_key.clone()]).unwrap(); // TODO!
                 appender = Box::new(move |ctx, row| {
                     let mut cursor = ctx
                         .storage

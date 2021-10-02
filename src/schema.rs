@@ -68,3 +68,12 @@ impl Schema {
         None
     }
 }
+
+impl Table {
+    pub fn get_column(&self, name: &str) -> Option<(usize, &Column)> {
+        self.columns
+            .iter()
+            .position(|c| c.name == name)
+            .map(|i| (i, &self.columns[i]))
+    }
+}

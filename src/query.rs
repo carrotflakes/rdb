@@ -11,9 +11,9 @@ pub struct Query {
 #[derive(Debug, Clone)]
 pub struct QuerySource {
     pub table_name: String,
-    pub iterate_over: String,
-    pub from: Option<Data>,
-    pub to: Option<Data>,
+    pub keys: Vec<String>,
+    pub from: Option<Vec<Data>>,
+    pub to: Option<Vec<Data>>,
 }
 
 #[derive(Debug, Clone)]
@@ -46,13 +46,7 @@ pub enum ProcessItem {
 
 #[derive(Debug, Clone)]
 pub enum PostProcessItem {
-    SortBy {
-        column_name: String,
-    },
-    Skip {
-        num: usize,
-    },
-    Limit {
-        num: usize,
-    },
+    SortBy { column_name: String },
+    Skip { num: usize },
+    Limit { num: usize },
 }

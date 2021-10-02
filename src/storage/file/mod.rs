@@ -47,7 +47,7 @@ impl Storage for File {
     fn source_index(
         &self,
         table_name: &str,
-        key_column_indices: &[usize],
+        key_columns: &[String],
     ) -> Option<Self::SourceIndex> {
         let (i, _table) = self.schema.get_table(table_name)?;
         Some(self.source_page_indices[i])
@@ -107,7 +107,7 @@ impl Storage for File {
         todo!()
     }
 
-    fn add_row(&mut self, source_index: Self::SourceIndex, data: Vec<Data>) -> Result<(), String> {
+    fn add_row(&mut self, table_name: &str, data: Vec<Data>) -> Result<(), String> {
         todo!()
     }
 }

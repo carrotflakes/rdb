@@ -7,12 +7,37 @@ pub fn parse_query_from_yaml(src: &str) -> Result<Query, serde_yaml::Error> {
     let query: mapping::Query = serde_yaml::from_str(src)?;
     Ok(Query {
         sub_queries: vec![],
-        source: QuerySource {
-            table_name: query.source.table,
-            iterate_over: query.source.iterate.over,
-            from: query.source.iterate.from.map(|x| Data::U64(x as u64)),
-            to: query.source.iterate.to.map(|x| Data::U64(x as u64)),
-        },
+        source: match query.source.iterate {
+            mapping::QuerySourceIterate {
+                over,
+                from,
+                to,
+                just: None,
+            } => QuerySource {
+                table_name: query.source.table,
+                keys: over,
+                from: from
+                    .map(|x| x.into_iter().map(string_to_data).collect()),
+                to: to
+                    .map(|x| x.into_iter().map(string_to_data).collect()),
+            },
+            mapping::QuerySourceIterate {
+                over,
+                from: None,
+                to: None,
+                just: Some(just),
+            } => {
+                let just = Some(just.into_iter().map(string_to_data).collect());
+                QuerySource {
+                table_name: query.source.table,
+                keys: over,
+                from: just.clone(),
+                to: just,
+            }},
+            _ => {
+                panic!("unexpected iterate")
+            }
+        } ,
         process: query
             .process
             .into_iter()
@@ -42,14 +67,23 @@ pub fn parse_query_from_yaml(src: &str) -> Result<Query, serde_yaml::Error> {
     })
 }
 
+pub fn string_to_data(str: String) -> Data {
+    if let Ok(v) = str.parse() {
+        Data::U64(v)
+    } else {
+        Data::String(str.clone())
+    }
+}
+
 pub fn query_to_yaml(query: &Query) -> String {
     serde_yaml::to_string(&mapping::Query {
         source: mapping::QuerySource {
             table: query.source.table_name.clone(),
             iterate: mapping::QuerySourceIterate {
-                over: query.source.iterate_over.clone(),
+                over: query.source.keys.clone(),
                 from: None,
                 to: None,
+                just: None,
             },
         },
         process: todo!(),
@@ -81,9 +115,10 @@ mod mapping {
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
     pub struct QuerySourceIterate {
-        pub over: String,
-        pub from: Option<usize>,
-        pub to: Option<usize>,
+        pub over: Vec<String>,
+        pub from: Option<Vec<String>>,
+        pub to: Option<Vec<String>>,
+        pub just: Option<Vec<String>>,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -2,9 +2,30 @@ use crate::{data::Data, schema::Schema};
 
 use super::Storage;
 
+#[derive(Debug)]
 pub struct InMemory {
     schema: Schema,
-    tables: Vec<(String, usize, Vec<Data>)>,
+    tables: Vec<Source>,
+}
+
+#[derive(Debug)]
+pub struct Source {
+    table_name: String,
+    key_columns: Vec<String>,
+    keys: Vec<Data>,
+    rows: SourceRows,
+}
+
+#[derive(Debug)]
+pub enum SourceRows {
+    Data {
+        columns_num: usize,
+        data_vec: Vec<Data>,
+    },
+    Index {
+        source_index: usize,
+        indices: Vec<usize>,
+    },
 }
 
 pub struct InMemoryCursor {
@@ -21,17 +42,22 @@ impl Storage for InMemory {
     }
 
     fn add_table(&mut self, table: crate::schema::Table) {
-        self.tables
-            .push((table.name.clone(), table.columns.len(), vec![]));
+        self.tables.push(Source {
+            table_name: table.name.clone(),
+            key_columns: vec![table.columns[table.primary_key.unwrap_or(0)].name.clone()],
+            keys: vec![],
+            rows: SourceRows::Data {
+                columns_num: table.columns.len(),
+                data_vec: vec![],
+            },
+        });
         self.schema.tables.push(table);
     }
 
-    fn source_index(
-        &self,
-        table_name: &str,
-        key_column_indices: &[usize],
-    ) -> Option<Self::SourceIndex> {
-        self.tables.iter().position(|x| x.0 == table_name)
+    fn source_index(&self, table_name: &str, key_columns: &[String]) -> Option<Self::SourceIndex> {
+        self.tables
+            .iter()
+            .position(|x| x.table_name == table_name && x.key_columns == key_columns)
     }
 
     fn get_cursor_first(&self, source_index: Self::SourceIndex) -> Self::Cursor {
@@ -42,17 +68,12 @@ impl Storage for InMemory {
     }
 
     fn get_cursor_just(&self, source_index: Self::SourceIndex, key: &Vec<Data>) -> Self::Cursor {
-        // let table = self.tables[source_index];
-        // for i in 0..table.2.len() / table.1 {
-            
-        // }
-        
         let table = &self.tables[source_index];
-        let columns_num = table.1;
-        let rows_num = table.2.len() / columns_num;
+        let columns_num = key.len();
+        let rows_num = table.keys.len() / columns_num;
         let mut index = 0;
         while index < rows_num {
-            if table.2[index * columns_num] == key[0] {
+            if &table.keys[index * columns_num..(index + 1) * columns_num] >= key {
                 break;
             }
             index += 1;
@@ -67,11 +88,22 @@ impl Storage for InMemory {
     }
 
     fn cursor_get_row(&self, cursor: &Self::Cursor) -> Option<Vec<Data>> {
-        let (_name, columns_num, data_vec) = &self.tables[cursor.source_index];
-        if cursor.index * columns_num >= data_vec.len() {
+        let table = &self.tables[cursor.source_index];
+        if cursor.index * table.key_columns.len() >= table.keys.len() {
             None
         } else {
-            Some(data_vec[cursor.index * columns_num..(cursor.index + 1) * columns_num].to_vec())
+            match &table.rows {
+                SourceRows::Data {
+                    columns_num,
+                    data_vec,
+                } => Some(
+                    data_vec[cursor.index * columns_num..(cursor.index + 1) * columns_num].to_vec(),
+                ),
+                SourceRows::Index {
+                    source_index,
+                    indices,
+                } => todo!(),
+            }
         }
     }
 
@@ -84,8 +116,8 @@ impl Storage for InMemory {
         if cursor.index == usize::MAX {
             return true;
         }
-        let (_name, columns_num, data_vec) = &self.tables[cursor.source_index];
-        cursor.index * columns_num >= data_vec.len()
+        let table = &self.tables[cursor.source_index];
+        cursor.index * table.key_columns.len() >= table.keys.len()
     }
 
     fn cursor_delete(&self, cursor: &mut Self::Cursor) -> bool {
@@ -96,8 +128,37 @@ impl Storage for InMemory {
         todo!()
     }
 
-    fn add_row(&mut self, source_index: Self::SourceIndex, data: Vec<Data>) -> Result<(), String> {
-        self.tables[source_index].2.extend(data);
+    fn add_row(&mut self, table_name: &str, data: Vec<Data>) -> Result<(), String> {
+        let st = self.schema.get_table(table_name).unwrap().1;
+        for table in self.tables.iter_mut() {
+            if table.table_name != table_name {
+                continue;
+            }
+            let keys_num = table.keys.len() / table.key_columns.len();
+            let key: Vec<_> = table
+                .key_columns
+                .iter()
+                .map(|c| data[st.get_column(c).unwrap().0].clone())
+                .collect();
+            let index = table
+                .keys
+                .chunks(table.key_columns.len())
+                .position(|k| key.as_slice() <= k)
+                .unwrap_or(keys_num);
+            table.keys.splice(index * key.len()..index * key.len(), key);
+            match &mut table.rows {
+                SourceRows::Data {
+                    columns_num,
+                    data_vec,
+                } => {
+                    data_vec.splice(index * *columns_num..index * *columns_num, data.clone());
+                }
+                SourceRows::Index {
+                    source_index,
+                    indices,
+                } => todo!(),
+            }
+        }
         Ok(())
     }
 }
