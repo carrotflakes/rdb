@@ -9,9 +9,8 @@ pub trait Page:
 {
 }
 
-impl<
-        P: From<PageRaw> + std::ops::Deref<Target = PageRaw> + std::ops::DerefMut<Target = PageRaw>,
-    > Page for P
+impl<P> Page for P where
+    P: From<PageRaw> + std::ops::Deref<Target = PageRaw> + std::ops::DerefMut<Target = PageRaw>
 {
 }
 

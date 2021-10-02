@@ -41,9 +41,17 @@ impl<S: StorageOld> Engine<S> {
         );
 
         let source = self.storage.source_index(&query.source.table_name).unwrap();
-        let mut cursor =
-            self.storage
-                .get_const_cursor_range(source, query.source.from, query.source.to);
+        let mut cursor = self.storage.get_const_cursor_range(
+            source,
+            match query.source.from {
+                Some(Data::U64(v)) => v as usize,
+                _ => panic!(),
+            },
+            match query.source.to {
+                Some(Data::U64(v)) => v as usize,
+                _ => panic!(),
+            },
+        );
         let mut ctx = QueryContext {
             storage: &self.storage,
             ended: false,

@@ -24,6 +24,7 @@ pub trait Storage: 'static {
     fn add_table(&mut self, table: schema::Table);
 
     fn source_index(&self, table_name: &str, key_column_indices: &[usize]) -> Option<Self::SourceIndex>;
+    fn get_cursor_first(&self, source_index: Self::SourceIndex) -> Self::Cursor;
     fn get_cursor_just(&self, source_index: Self::SourceIndex, key: &[Data]) -> Self::Cursor;
     
     fn cursor_get_row(&self, cursor: &Self::Cursor) -> Vec<Data>;

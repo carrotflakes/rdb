@@ -3,17 +3,12 @@ mod pager;
 
 use std::borrow::Borrow;
 
-use crate::{
-    btree::{BTree, BTreeNode},
-    data::Data,
-    schema::Schema,
-    storage::Storage,
-};
+use crate::{btree::BTree, data::Data, schema::Schema, storage::Storage};
 
-use self::pager::{Page, PageRaw, Pager};
+use self::pager::{PageRaw, Pager};
 
 pub struct File {
-    pager: Pager<PageImpl>,
+    pager: Pager<Page>,
     schema: Schema,
     source_page_indices: Vec<usize>,
 }
@@ -49,6 +44,10 @@ impl Storage for File {
         let (i, _table) = self.schema.get_table(table_name)?;
         Some(self.source_page_indices[i])
         // todo!()
+    }
+
+    fn get_cursor_first(&self, source_index: Self::SourceIndex) -> Self::Cursor {
+        todo!()
     }
 
     fn get_cursor_just(&self, source_index: Self::SourceIndex, key: &[Data]) -> Self::Cursor {
@@ -99,7 +98,7 @@ impl File {
                 source_page_indices: vec![],
             }
         } else {
-            let first_page: &PageImpl = pager.get_ref(0);
+            let first_page: &Page = pager.get_ref(0);
             let schema = bincode::deserialize(&first_page.borrow()[..]).unwrap();
             dbg!(&schema);
             Self {
@@ -111,17 +110,17 @@ impl File {
     }
 }
 
-pub struct PageImpl {
+pub struct Page {
     raw: PageRaw,
 }
 
-impl From<PageRaw> for PageImpl {
+impl From<PageRaw> for Page {
     fn from(raw: PageRaw) -> Self {
-        PageImpl {raw}
+        Page { raw }
     }
 }
 
-impl std::ops::Deref for PageImpl {
+impl std::ops::Deref for Page {
     type Target = PageRaw;
 
     fn deref(&self) -> &Self::Target {
@@ -129,7 +128,7 @@ impl std::ops::Deref for PageImpl {
     }
 }
 
-impl std::ops::DerefMut for PageImpl {
+impl std::ops::DerefMut for Page {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.raw
     }

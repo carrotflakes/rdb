@@ -1,4 +1,7 @@
-use crate::query::{ProcessItem, Query, QuerySource};
+use crate::{
+    data::Data,
+    query::{ProcessItem, Query, QuerySource},
+};
 
 pub fn parse_query_from_yaml(src: &str) -> Result<Query, serde_yaml::Error> {
     let query: mapping::Query = serde_yaml::from_str(src)?;
@@ -7,8 +10,8 @@ pub fn parse_query_from_yaml(src: &str) -> Result<Query, serde_yaml::Error> {
         source: QuerySource {
             table_name: query.source.table,
             iterate_over: query.source.iterate.over,
-            from: query.source.iterate.from.unwrap_or(0),
-            to: query.source.iterate.to.unwrap_or(usize::MAX),
+            from: query.source.iterate.from.map(|x| Data::U64(x as u64)),
+            to: query.source.iterate.to.map(|x| Data::U64(x as u64)),
         },
         process: query
             .process

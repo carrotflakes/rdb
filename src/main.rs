@@ -105,8 +105,8 @@ fn main() {
         source: QuerySource {
             table_name: "user".to_string(),
             iterate_over: "id".to_string(),
-            from: 0,
-            to: 100,
+            from: Some(Data::U64(0)),
+            to: Some(Data::U64(100)),
         },
         process: vec![ProcessItem::Select {
             columns: vec![

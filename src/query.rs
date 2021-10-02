@@ -1,3 +1,5 @@
+use crate::data::Data;
+
 #[derive(Debug, Clone)]
 pub struct Query {
     pub sub_queries: Vec<(String, Query)>,
@@ -10,8 +12,8 @@ pub struct Query {
 pub struct QuerySource {
     pub table_name: String,
     pub iterate_over: String,
-    pub from: usize,
-    pub to: usize,
+    pub from: Option<Data>,
+    pub to: Option<Data>,
 }
 
 #[derive(Debug, Clone)]
