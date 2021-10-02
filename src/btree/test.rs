@@ -14,8 +14,9 @@ pub struct IBTree {
     pages: Vec<IBTreeNode<String>>,
 }
 
-impl<V: Clone> BTreeNode<V> for IBTreeNode<V> {
+impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
     type Meta = ();
+    type Cursor = usize;
 
     fn is_leaf(&self, _: &()) -> bool {
         self.values.is_err()
@@ -36,28 +37,28 @@ impl<V: Clone> BTreeNode<V> for IBTreeNode<V> {
         }
     }
 
-    fn is_full(&self,_: &()) -> bool {
+    fn is_full(&self, _: &()) -> bool {
         match &self.values {
             Ok(x) => x.len() == 4,
             Err(x) => x.len() == 3,
         }
     }
 
-    fn insert(&mut self,meta: &(), key: usize, value: &V) -> bool {
+    fn insert(&mut self, meta: &(), key: &usize, value: &V) -> bool {
         if self.is_full(meta) {
             return false;
         }
         if let Err(values) = &mut self.values {
             for i in 0..self.keys.len() {
-                if self.keys[i] == key {
+                if &self.keys[i] == key {
                     panic!("dup");
-                } else if key < self.keys[i] {
-                    self.keys.insert(i, key);
+                } else if key < &self.keys[i] {
+                    self.keys.insert(i, key.clone());
                     values.insert(i, value.clone());
                     return true;
                 }
             }
-            self.keys.push(key);
+            self.keys.push(key.clone());
             values.push(value.clone());
             true
         } else {
@@ -65,26 +66,26 @@ impl<V: Clone> BTreeNode<V> for IBTreeNode<V> {
         }
     }
 
-    fn insert_node(&mut self,_: &(), key: usize, node_i: usize) {
+    fn insert_node(&mut self, _: &(), key: &usize, node_i: usize) {
         if let Ok(children) = &mut self.values {
             for i in 0..self.keys.len() {
-                if self.keys[i] == key {
+                if &self.keys[i] == key {
                     panic!("dup");
-                } else if key < self.keys[i] {
-                    self.keys.insert(i, key);
+                } else if key < &self.keys[i] {
+                    self.keys.insert(i, key.clone());
                     children.insert(i + 1, node_i);
                     return;
                 }
             }
-            self.keys.push(key);
+            self.keys.push(key.clone());
             children.push(node_i);
         } else {
             panic!("b")
         }
     }
 
-    fn get(&self,_: &(), key: usize) -> Option<V> {
-        if let Some(i) = self.keys.iter().position(|k| *k == key) {
+    fn get(&self, _: &(), key: &usize) -> Option<V> {
+        if let Some(i) = self.keys.iter().position(|k| k == key) {
             if let Err(values) = &self.values {
                 Some(values[i].to_owned())
             } else {
@@ -95,10 +96,10 @@ impl<V: Clone> BTreeNode<V> for IBTreeNode<V> {
         }
     }
 
-    fn get_child(&self,_: &(), key: usize) -> usize {
+    fn get_child(&self, _: &(), key: &usize) -> usize {
         if let Ok(chuldren) = &self.values {
             for i in 0..self.keys.len() {
-                if key < self.keys[i] {
+                if key < &self.keys[i] {
                     return chuldren[i];
                 }
             }
@@ -108,7 +109,15 @@ impl<V: Clone> BTreeNode<V> for IBTreeNode<V> {
         }
     }
 
-    fn get_children(&self,_: &()) -> Vec<usize> {
+    fn get_first_child(&self, meta: &Self::Meta) -> usize {
+        if let Ok(chuldren) = &self.values {
+            chuldren[0]
+        } else {
+            panic!("!")
+        }
+    }
+
+    fn get_children(&self, _: &()) -> Vec<usize> {
         if let Ok(children) = &self.values {
             children.clone()
         } else {
@@ -116,8 +125,8 @@ impl<V: Clone> BTreeNode<V> for IBTreeNode<V> {
         }
     }
 
-    fn remove(&mut self,_: &(), key: usize) -> bool {
-        if let Some(i) = self.keys.iter().position(|k| *k == key) {
+    fn remove(&mut self, _: &(), key: &usize) -> bool {
+        if let Some(i) = self.keys.iter().position(|k| k == key) {
             if let Err(values) = &mut self.values {
                 self.keys.remove(i);
                 values.remove(i);
@@ -130,7 +139,7 @@ impl<V: Clone> BTreeNode<V> for IBTreeNode<V> {
         }
     }
 
-    fn split_out(&mut self,_: &()) -> (usize, Self) {
+    fn split_out(&mut self, _: &()) -> (usize, Self) {
         match &mut self.values {
             Ok(vs) => {
                 let pivot = self.keys[1];
@@ -165,13 +174,45 @@ impl<V: Clone> BTreeNode<V> for IBTreeNode<V> {
         }
     }
 
-    fn init_as_root(&mut self,_: &(), key: usize, i1: usize, i2: usize) {
-        self.keys = vec![key];
+    fn init_as_root(&mut self, _: &(), key: &usize, i1: usize, i2: usize) {
+        self.keys = vec![key.clone()];
         self.values = Ok(vec![i1, i2]);
+    }
+
+    fn first_cursor(&self, meta: &Self::Meta) -> Self::Cursor {
+        0
+    }
+
+    fn find(&self, meta: &Self::Meta, key: &usize) -> Option<Self::Cursor> {
+        if let Some(i) = self.keys.iter().position(|k| k == key) {
+            if let Err(values) = &self.values {
+                Some(i)
+            } else {
+                panic!("ook");
+            }
+        } else {
+            None
+        }
+    }
+
+    fn cursor_get(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> Option<(super::Key, V)> {
+        if let Err(values) = &self.values {
+            Some((self.keys[*cursor].clone(), values[*cursor].clone()))
+        } else {
+            panic!("ook");
+        }
+    }
+
+    fn cursor_next(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> Self::Cursor {
+        todo!()
+    }
+
+    fn cursor_is_end(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> bool {
+        todo!()
     }
 }
 
-impl BTree<String> for IBTree {
+impl BTree<usize, String> for IBTree {
     type Node = IBTreeNode<String>;
 
     fn add_root_node(&mut self) -> usize {
@@ -182,7 +223,7 @@ impl BTree<String> for IBTree {
         });
         self.pages.len() - 1
     }
-    
+
     fn node_ref(&self, i: usize) -> &IBTreeNode<String> {
         &self.pages[i]
     }
@@ -240,28 +281,28 @@ fn test() {
 
     let mut set = IBTree::new();
     let meta = ();
-    dbg!(set.find(&meta, 0, 10));
-    dbg!(set.insert(&meta, 0, 10, &"10".to_string()));
-    dbg!(set.find(&meta, 0, 10));
-    dbg!(set.insert(&meta, 0, 20, &"20".to_string()));
-    dbg!(set.insert(&meta, 0, 30, &"30".to_string()));
+    dbg!(set.find_one(&meta, 0, &10));
+    dbg!(set.insert(&meta, 0, &10, &"10".to_string()));
+    dbg!(set.find_one(&meta, 0, &10));
+    dbg!(set.insert(&meta, 0, &20, &"20".to_string()));
+    dbg!(set.insert(&meta, 0, &30, &"30".to_string()));
     dbg!(&set);
-    dbg!(set.insert(&meta, 0, 40, &"40".to_string()));
+    dbg!(set.insert(&meta, 0, &40, &"40".to_string()));
     dbg!(&set);
-    dbg!(set.find(&meta, 0, 20));
-    dbg!(set.find(&meta, 0, 30));
-    dbg!(set.insert(&meta, 0, 15, &"15".to_string()));
+    dbg!(set.find_one(&meta, 0, &20));
+    dbg!(set.find_one(&meta, 0, &30));
+    dbg!(set.insert(&meta, 0, &15, &"15".to_string()));
     dbg!(&set);
-    dbg!(set.insert(&meta, 0, 16, &"16".to_string()));
+    dbg!(set.insert(&meta, 0, &16, &"16".to_string()));
     dbg!(&set);
-    dbg!(set.insert(&meta, 0, 25, &"25".to_string()));
-    dbg!(set.insert(&meta, 0, 45, &"45".to_string()));
+    dbg!(set.insert(&meta, 0, &25, &"25".to_string()));
+    dbg!(set.insert(&meta, 0, &45, &"45".to_string()));
     dbg!(&set);
-    dbg!(set.find(&meta, 0, 10));
-    dbg!(set.find(&meta, 0, 20));
-    dbg!(set.find(&meta, 0, 30));
-    dbg!(set.find(&meta, 0, 40));
-    dbg!(set.find(&meta, 0, 15));
+    dbg!(set.find_one(&meta, 0, &10));
+    dbg!(set.find_one(&meta, 0, &20));
+    dbg!(set.find_one(&meta, 0, &30));
+    dbg!(set.find_one(&meta, 0, &40));
+    dbg!(set.find_one(&meta, 0, &15));
 
     let vs = vec![
         11, 5, 9, 2, 6, 8, 16, 20, 18, 3, 4, 10, 12, 15, 1, 14, 13, 19, 7, 17,
@@ -269,16 +310,16 @@ fn test() {
     // let vs = (1..=20).rev().collect::<Vec<usize>>();
     let mut t = IBTree::new();
     for v in &vs {
-        t.insert(&meta, 0, *v, &format!("{}", v)).unwrap();
+        t.insert(&meta, 0, v, &format!("{}", v)).unwrap();
         t.show_nodes(0);
         // dbg!(&t);
         println!();
     }
     for v in &vs {
-        t.find(&meta, 0, *v).unwrap();
+        t.find_one(&meta, 0, v).unwrap();
     }
     for v in &vs {
-        t.remove(&meta, 0, *v);
+        t.remove(&meta, 0, v);
     }
     t.show_nodes(0);
 }

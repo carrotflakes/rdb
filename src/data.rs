@@ -6,7 +6,7 @@ pub enum Type {
     String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum Data {
     U64(u64),
     String(String),

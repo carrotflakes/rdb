@@ -1,4 +1,11 @@
-use rdb::{data::{Data, Type}, engine::Engine, front::{print_table, yaml::parse_query_from_yaml}, query::{ProcessItem, Query, QuerySource}, schema, storage::StorageOld};
+use rdb::{
+    data::{Data, Type},
+    engine::Engine,
+    front::{print_table, yaml::parse_query_from_yaml},
+    query::{ProcessItem, Query, QuerySource},
+    schema,
+    storage::Storage,
+};
 
 fn main() {
     let schema = schema::Schema {
@@ -43,10 +50,10 @@ fn main() {
     };
 
     let mut s = rdb::storage::in_memory::InMemory::new();
-    s.add_table("user".to_string(), 3);
-    s.add_table("message".to_string(), 3);
+    s.add_table(schema.tables[0].clone());
+    s.add_table(schema.tables[1].clone());
     dbg!(s
-        .push_row(
+        .add_row(
             0,
             vec![
                 Data::U64(1),
@@ -56,7 +63,7 @@ fn main() {
         )
         .unwrap());
     dbg!(s
-        .push_row(
+        .add_row(
             0,
             vec![
                 Data::U64(2),
@@ -65,7 +72,7 @@ fn main() {
             ]
         )
         .unwrap());
-    s.push_row(
+    s.add_row(
         1,
         vec![
             Data::U64(1),
@@ -74,7 +81,7 @@ fn main() {
         ],
     )
     .unwrap();
-    s.push_row(
+    s.add_row(
         1,
         vec![
             Data::U64(2),
@@ -83,7 +90,7 @@ fn main() {
         ],
     )
     .unwrap();
-    s.push_row(
+    s.add_row(
         1,
         vec![
             Data::U64(3),
@@ -93,10 +100,10 @@ fn main() {
     )
     .unwrap();
 
-    let mut c = s.get_const_cursor_range(s.source_index("user").unwrap(), 0, 100);
-    dbg!(s.get_from_cursor(&c));
-    s.advance_cursor(&mut c);
+    // let mut c = s.get_const_cursor_range(s.source_index("user").unwrap(), 0, 100);
     // dbg!(s.get_from_cursor(&c));
+    // s.advance_cursor(&mut c);
+    // // dbg!(s.get_from_cursor(&c));
 
     let mut engine = Engine::new(schema, s);
 
@@ -119,7 +126,6 @@ fn main() {
     let (cs, vs) = engine.execute_query(&query).unwrap();
     print_table(&cs, &vs);
 
-    
     // let query = Query {
     //     sub_queries: vec![],
     //     source: QuerySource {
@@ -141,7 +147,8 @@ fn main() {
     //     }],
     //     post_process: vec![],
     // };
-    let query = parse_query_from_yaml(r"
+    let query = parse_query_from_yaml(
+        r"
 source:
     table: message
     iterate:
@@ -158,7 +165,9 @@ process:
         as: text
     -   name: 'user.name'
         as: user_name
-").unwrap();
+",
+    )
+    .unwrap();
     let (cs, vs) = engine.execute_query(&query).unwrap();
     print_table(&cs, &vs);
 }

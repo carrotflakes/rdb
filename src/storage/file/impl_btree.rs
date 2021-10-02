@@ -17,12 +17,13 @@ pub struct Node {
 // [4] next node id
 
 pub struct Meta {
-    key_size: Option<usize>,
-    value_size: Option<usize>,
+    pub key_size: Option<usize>,
+    pub value_size: Option<usize>,
 }
 
-impl BTreeNode<Data> for Page {
+impl BTreeNode<Vec<Data>, Vec<Data>> for Page {
     type Meta = Meta;
+    type Cursor = usize;
 
     fn is_leaf(&self, _: &Self::Meta) -> bool {
         self[0] == 1
@@ -49,22 +50,35 @@ impl BTreeNode<Data> for Page {
 
     fn is_full(&self, meta: &Self::Meta) -> bool {
         debug_assert!(!self.is_leaf(meta));
+        if let Some(key_size) = meta.key_size {
+            // fixed key_size:
+            let value_size = 4;
+            let size = self.size(meta);
+            let size_max = (PAGE_SIZE - (1+4+2+4)) / (key_size + value_size) as u64;
+            size as u64 == size_max
+        } else {
+            // variable key_size:
+            panic!("variable key_size is not supported")
+        }
+    }
+
+    fn insert(&mut self, meta: &Self::Meta, key: &Vec<Data>, value: &Vec<Data>) -> bool {
         todo!()
     }
 
-    fn insert(&mut self, meta: &Self::Meta, key: Key, value: &Data) -> bool {
+    fn insert_node(&mut self, meta: &Self::Meta, key: &Vec<Data>, node_i: usize) {
         todo!()
     }
 
-    fn insert_node(&mut self, meta: &Self::Meta, key: Key, node_i: usize) {
+    fn get(&self, meta: &Self::Meta, key: &Vec<Data>) -> Option<Vec<Data>> {
         todo!()
     }
 
-    fn get(&self, meta: &Self::Meta, key: Key) -> Option<Data> {
+    fn get_child(&self, meta: &Self::Meta, key: &Vec<Data>) -> usize {
         todo!()
     }
 
-    fn get_child(&self, meta: &Self::Meta, key: Key) -> usize {
+    fn get_first_child(&self, meta: &Self::Meta) -> usize {
         todo!()
     }
 
@@ -72,11 +86,11 @@ impl BTreeNode<Data> for Page {
         todo!()
     }
 
-    fn remove(&mut self, meta: &Self::Meta, key: Key) -> bool {
+    fn remove(&mut self, meta: &Self::Meta, key: &Vec<Data>) -> bool {
         todo!()
     }
 
-    fn split_out(&mut self, meta: &Self::Meta) -> (usize, Self) {
+    fn split_out(&mut self, meta: &Self::Meta) -> (Vec<Data>, Self) {
         todo!()
     }
 
@@ -84,12 +98,32 @@ impl BTreeNode<Data> for Page {
         [0; PAGE_SIZE as usize].into()
     }
 
-    fn init_as_root(&mut self, meta: &Self::Meta, key: Key, i1: usize, i2: usize) {
+    fn init_as_root(&mut self, meta: &Self::Meta, key: &Vec<Data>, i1: usize, i2: usize) {
+        todo!()
+    }
+
+    fn first_cursor(&self, meta: &Self::Meta) -> Self::Cursor {
+        0
+    }
+
+    fn find(&self, meta: &Self::Meta, key: &Vec<Data>) -> Option<Self::Cursor> {
+        todo!()
+    }
+
+    fn cursor_get(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> Option<(Vec<Data>, Vec<Data>)> {
+        todo!()
+    }
+
+    fn cursor_next(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> Self::Cursor {
+        todo!()
+    }
+
+    fn cursor_is_end(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> bool {
         todo!()
     }
 }
 
-impl BTree<Data> for File {
+impl BTree<Vec<Data>, Vec<Data>> for File {
     type Node = Page;
 
     fn add_root_node(&mut self) -> usize {

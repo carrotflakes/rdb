@@ -2,15 +2,15 @@ use crate::{
     data::Data,
     query::{ProcessItem, Query},
     schema::Schema,
-    storage::StorageOld,
+    storage::Storage,
 };
 
-pub struct Engine<S: StorageOld> {
+pub struct Engine<S: Storage> {
     schema: Schema,
     storage: S,
 }
 
-impl<S: StorageOld> Engine<S> {
+impl<S: Storage> Engine<S> {
     pub fn new(schema: Schema, storage: S) -> Self {
         Self { schema, storage }
     }
@@ -40,40 +40,42 @@ impl<S: StorageOld> Engine<S> {
             appender,
         );
 
-        let source = self.storage.source_index(&query.source.table_name).unwrap();
-        let mut cursor = self.storage.get_const_cursor_range(
-            source,
-            match query.source.from {
-                Some(Data::U64(v)) => v as usize,
-                _ => panic!(),
-            },
-            match query.source.to {
-                Some(Data::U64(v)) => v as usize,
-                _ => panic!(),
-            },
-        );
+        let source = self
+            .storage
+            .source_index(&query.source.table_name, &[])
+            .unwrap();
+        // let is_just = query.source.from.is_some();
+        // let mut cursor = self.storage.get_cursor_just(
+        //     source,
+        //     &vec![query.source.from.clone().unwrap_or(Data::U64(0))],
+        // );
+        let mut cursor = self.storage.get_cursor_first(source);
         let mut ctx = QueryContext {
             storage: &self.storage,
             ended: false,
         };
         while !ctx.ended && !self.storage.cursor_is_end(&cursor) && {
-            let row = self.storage.get_from_cursor(&cursor);
-            appender(&mut ctx, row);
-            self.storage.advance_cursor(&mut cursor)
+            if let Some(row) = self.storage.cursor_get_row(&cursor) {
+                // check end...!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                appender(&mut ctx, row);
+                self.storage.cursor_advance(&mut cursor)
+            } else {
+                false
+            }
         } {}
 
         Ok((columns, rows))
     }
 }
 
-pub struct QueryContext<'a, S: StorageOld> {
+pub struct QueryContext<'a, S: Storage> {
     storage: &'a S,
     ended: bool,
 }
 
 type RowAppender<S> = Box<dyn for<'a> FnMut(&mut QueryContext<'a, S>, Vec<Data>)>;
 
-fn build_excecutable_query_process<S: StorageOld>(
+fn build_excecutable_query_process<S: Storage>(
     schema: &Schema,
     storage: &S,
     columns: Vec<String>,
@@ -146,22 +148,30 @@ fn build_excecutable_query_process<S: StorageOld>(
                 left_key,
                 right_key,
             } => {
-                let source = storage.source_index(table_name).unwrap();
                 let left_i = post_columns.iter().position(|c| c == left_key).unwrap();
-                // let right_i = columns.iter().position(|c| c == right_key).unwrap(); // TODO!!!!
+                let (_, table) = schema.get_table(table_name).unwrap();
+                let right_i = table.columns.iter().position(|c| &c.name == right_key).unwrap();
+                let source_index = storage.source_index(table_name, &[right_i]).unwrap(); // TODO!
                 appender = Box::new(move |ctx, row| {
                     let mut cursor = ctx
                         .storage
-                        .get_const_cursor_just(source, row[left_i].clone());
+                        .get_cursor_just(source_index, &vec![row[left_i].clone()]);
                     if ctx.storage.cursor_is_end(&cursor) {
                         return;
                     }
                     while {
-                        let append_row = ctx.storage.get_from_cursor(&cursor);
-                        let mut row_ = row.clone();
-                        row_.extend(append_row);
-                        appender(ctx, row_);
-                        ctx.storage.advance_cursor(&mut cursor)
+                        if let Some(append_row) = ctx.storage.cursor_get_row(&cursor) {
+                            if append_row[right_i] == row[left_i] {
+                                let mut row_ = row.clone();
+                                row_.extend(append_row);
+                                appender(ctx, row_);
+                                ctx.storage.cursor_advance(&mut cursor)
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
                     } {}
                 });
             }

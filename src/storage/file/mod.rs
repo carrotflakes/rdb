@@ -3,9 +3,17 @@ mod pager;
 
 use std::borrow::Borrow;
 
-use crate::{btree::BTree, data::Data, schema::Schema, storage::Storage};
+use crate::{
+    btree::{BTree, BTreeCursor},
+    data::Data,
+    schema::Schema,
+    storage::Storage,
+};
 
-use self::pager::{PageRaw, Pager};
+use self::{
+    impl_btree::Meta,
+    pager::{PageRaw, Pager},
+};
 
 pub struct File {
     pager: Pager<Page>,
@@ -15,8 +23,8 @@ pub struct File {
 
 pub struct FileCursor {
     source_index: usize,
-    index: usize,
-    end: bool,
+    meta: Meta,
+    btree_cursor: BTreeCursor<Vec<Data>, Vec<Data>, File>,
 }
 
 impl Storage for File {
@@ -47,10 +55,21 @@ impl Storage for File {
     }
 
     fn get_cursor_first(&self, source_index: Self::SourceIndex) -> Self::Cursor {
-        todo!()
+        let meta = Meta {
+            key_size: None,
+            value_size: None,
+        };
+        FileCursor {
+            source_index,
+            meta: Meta {
+                key_size: None,
+                value_size: None,
+            },
+            btree_cursor: self.first_cursor(&meta, source_index),
+        }
     }
 
-    fn get_cursor_just(&self, source_index: Self::SourceIndex, key: &[Data]) -> Self::Cursor {
+    fn get_cursor_just(&self, source_index: Self::SourceIndex, key: &Vec<Data>) -> Self::Cursor {
         // let index;
         // self.find(source_index, key)
         // FileCursor {
@@ -61,16 +80,23 @@ impl Storage for File {
         todo!()
     }
 
-    fn cursor_get_row(&self, cursor: &Self::Cursor) -> Vec<Data> {
-        todo!()
+    fn cursor_get_row(&self, cursor: &Self::Cursor) -> Option<Vec<Data>> {
+        self.cursor_get(&cursor.meta, &cursor.btree_cursor)
+            .map(|x| x.1)
     }
 
     fn cursor_advance(&self, cursor: &mut Self::Cursor) -> bool {
-        todo!()
+        let c = self.cursor_next(&cursor.meta, &cursor.btree_cursor);
+        cursor.btree_cursor = c;
+        true
     }
 
     fn cursor_is_end(&self, cursor: &Self::Cursor) -> bool {
-        todo!()
+        <Self as BTree<Vec<Data>, Vec<Data>>>::cursor_is_end(
+            &self,
+            &cursor.meta,
+            &cursor.btree_cursor,
+        )
     }
 
     fn cursor_delete(&self, cursor: &mut Self::Cursor) -> bool {
