@@ -3,7 +3,10 @@ use rdb::{
     engine::Engine,
     front::{
         print_table,
-        yaml::{parse_insert_from_yaml, parse_select_from_yaml},
+        yaml::{
+            query::{parse_insert_from_yaml, parse_select_from_yaml},
+            schema::parse_table_from_yaml,
+        },
     },
     query::{Insert, ProcessItem, Select, SelectSource},
     schema,
@@ -34,27 +37,17 @@ fn main() {
                 ],
                 primary_key: Some(0),
             },
-            schema::Table {
-                name: "message".to_string(),
-                columns: vec![
-                    schema::Column {
-                        name: "id".to_string(),
-                        dtype: Type::U64,
-                        default: None,
-                    },
-                    schema::Column {
-                        name: "user_id".to_string(),
-                        dtype: Type::U64,
-                        default: None,
-                    },
-                    schema::Column {
-                        name: "text".to_string(),
-                        dtype: Type::String,
-                        default: None,
-                    },
-                ],
-                primary_key: Some(0),
-            },
+            parse_table_from_yaml(r"
+name: message
+columns:
+-   name: id
+    type: u64
+-   name: user_id
+    type: u64
+-   name: text
+    type: string
+primary_key: id
+            ").unwrap()
         ],
     };
 

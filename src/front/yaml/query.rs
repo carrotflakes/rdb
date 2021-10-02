@@ -1,5 +1,5 @@
 use crate::{
-    data::Data,
+    front::yaml::string_to_data,
     query::{Insert, ProcessItem, Select, SelectSource},
 };
 
@@ -64,14 +64,6 @@ pub fn parse_select_from_yaml(src: &str) -> Result<Select, serde_yaml::Error> {
             .collect(),
         post_process: vec![],
     })
-}
-
-pub fn string_to_data(str: String) -> Data {
-    if let Ok(v) = str.parse() {
-        Data::U64(v)
-    } else {
-        Data::String(str.clone())
-    }
 }
 
 pub fn query_to_yaml(query: &Select) -> String {
