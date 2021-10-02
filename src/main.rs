@@ -100,7 +100,7 @@ fn main() {
     )
     .unwrap();
 
-    let mut engine = Engine::new(schema, s);
+    let mut engine = Engine::from_storage(s);
 
     let query = Select {
         sub_queries: vec![],
@@ -125,7 +125,11 @@ fn main() {
         .execute_insert(&Insert {
             table_name: "message".to_owned(),
             column_names: vec!["id".to_owned(), "user_id".to_owned(), "text".to_owned()],
-            values: vec![Data::U64(4), Data::U64(1), Data::String("I'm not a cat!".to_owned())],
+            values: vec![
+                Data::U64(4),
+                Data::U64(1),
+                Data::String("I'm not a cat!".to_owned()),
+            ],
         })
         .unwrap();
 

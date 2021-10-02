@@ -6,13 +6,16 @@ use crate::{
 };
 
 pub struct Engine<S: Storage> {
-    schema: Schema,
     storage: S,
 }
 
 impl<S: Storage> Engine<S> {
-    pub fn new(schema: Schema, storage: S) -> Self {
-        Self { schema, storage }
+    pub fn from_storage(storage: S) -> Self {
+        Self { storage }
+    }
+
+    pub fn schema(&self) -> &Schema {
+        self.storage.schema()
     }
 
     pub fn execute_select(&self, query: &Select) -> Result<(Vec<String>, Vec<Data>), String> {
@@ -24,7 +27,7 @@ impl<S: Storage> Engine<S> {
             })
         };
 
-        let table = if let Some((_, table)) = self.schema.get_table(&query.source.table_name) {
+        let table = if let Some((_, table)) = self.schema().get_table(&query.source.table_name) {
             table
         } else {
             return Err(format!("missing table"));
@@ -32,7 +35,7 @@ impl<S: Storage> Engine<S> {
 
         let columns = table.columns.iter().map(|c| c.name.to_owned()).collect();
         let (columns, mut appender) = build_excecutable_query_process(
-            &self.schema,
+            self.schema(),
             &self.storage,
             columns,
             &query.process,
@@ -82,7 +85,7 @@ impl<S: Storage> Engine<S> {
 
     pub fn execute_insert(&mut self, insert: &query::Insert) -> Result<(), String> {
         let values = self
-            .schema
+            .schema()
             .get_table(&insert.table_name)
             .unwrap()
             .1
