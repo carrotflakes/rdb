@@ -32,6 +32,7 @@ pub fn parse_table_from_yaml(src: &str) -> Result<Table, serde_yaml::Error> {
         name: table.name,
         columns,
         primary_key,
+        constraints: Vec::new(),
     })
 }
 

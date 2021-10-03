@@ -171,6 +171,7 @@ fn test() {
         name: "hey".to_owned(),
         columns: vec![],
         primary_key: Some(0),
+        constraints: vec![],
     });
 
     f.pager.save();

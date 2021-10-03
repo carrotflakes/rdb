@@ -36,6 +36,7 @@ fn main() {
                     },
                 ],
                 primary_key: Some(0),
+                constraints: Vec::new(),
             },
             parse_table_from_yaml(
                 r"

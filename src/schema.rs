@@ -12,7 +12,7 @@ pub struct Table {
     pub name: String,
     pub columns: Vec<Column>,
     pub primary_key: Option<usize>,
-    // pub constraints: Vec<Constraint>,
+    pub constraints: Vec<Constraint>,
     // pub indices: Vec<Index>,
 }
 
@@ -27,6 +27,18 @@ pub struct Column {
 pub enum Default {
     Data(Data),
     AutoIncrement,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Constraint {
+    Unique {
+        column_indices: Vec<usize>,
+    },
+    ForeignKey {
+        column_index: usize,
+        foreign_table_name: String,
+        foreign_column_index: usize,
+    },
 }
 
 impl Schema {
