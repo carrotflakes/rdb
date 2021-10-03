@@ -3,10 +3,15 @@ mod pager;
 
 use std::borrow::Borrow;
 
-use crate::{btree::{BTree}, data::{Data, Type, data_vec_from_bytes, data_vec_to_bytes}, schema::Schema, storage::Storage};
+use crate::{
+    btree::BTree,
+    data::{data_vec_from_bytes, data_vec_to_bytes, Data, Type},
+    schema::Schema,
+    storage::Storage,
+};
 
 use self::{
-    impl_btree::{Meta, BTreeCursor},
+    impl_btree::{BTreeCursor, Meta},
     pager::{PageRaw, Pager},
 };
 
@@ -15,12 +20,12 @@ pub struct File {
     schema: Schema,
     source_page_indices: Vec<usize>,
     key_types: Vec<Vec<Type>>,
+    metas: Vec<Meta>,
     auto_increment: u64,
 }
 
 pub struct FileCursor {
     source_index: usize,
-    meta: Meta,
     btree_cursor: BTreeCursor,
 }
 
@@ -38,12 +43,26 @@ impl Storage for File {
 
         let page_index = self.add_root_node();
         self.source_page_indices.push(page_index); // ??
-        self.key_types.push(if let Some(primary_key) = table.primary_key {
-            vec![table.columns[primary_key].dtype.clone()]
-        } else {
-            vec![]
+        self.key_types
+            .push(if let Some(primary_key) = table.primary_key {
+                vec![table.columns[primary_key].dtype.clone()]
+            } else {
+                vec![]
+            });
+        self.metas.push(Meta {
+            key_size: if let Some(primary_key) = table.primary_key {
+                table.columns[primary_key].dtype.size()
+            } else {
+                Some(0)
+            },
+            value_size: table
+                .columns
+                .iter()
+                .map(|c| c.dtype.size())
+                .collect::<Option<Vec<usize>>>()
+                .map(|ss| ss.into_iter().sum::<usize>()),
         });
-        
+
         self.schema.tables.push(table);
     }
 
@@ -59,38 +78,27 @@ impl Storage for File {
     }
 
     fn get_cursor_first(&self, source_index: Self::SourceIndex) -> Self::Cursor {
-        let meta = Meta {
-            key_size: None,
-            value_size: None,
-        };
         FileCursor {
             source_index,
-            meta: Meta {
-                key_size: None,
-                value_size: None,
-            },
-            btree_cursor: self.first_cursor(&meta, source_index),
+            btree_cursor: self.first_cursor(&self.metas[source_index], source_index),
         }
     }
 
     fn get_cursor_just(&self, source_index: Self::SourceIndex, key: &Vec<Data>) -> Self::Cursor {
-        // let index;
-        // self.find(source_index, key)
-        // FileCursor {
-        //     source_index,
-        //     index,
-        //     end: false,
-        // }
-        todo!()
+        let key = data_vec_to_bytes(key);
+        FileCursor {
+            source_index,
+            btree_cursor: self.find(&self.metas[source_index], source_index, &key).unwrap(),
+        }
     }
 
     fn cursor_get_row(&self, cursor: &Self::Cursor) -> Option<Vec<Data>> {
-        self.cursor_get(&cursor.meta, &cursor.btree_cursor)
+        self.cursor_get(&self.metas[cursor.source_index], &cursor.btree_cursor)
             .map(|x| data_vec_from_bytes(&self.key_types[cursor.source_index], &x.1).unwrap())
     }
 
     fn cursor_advance(&self, cursor: &mut Self::Cursor) -> bool {
-        let c = self.cursor_next(&cursor.meta, &cursor.btree_cursor);
+        let c = self.cursor_next(&self.metas[cursor.source_index], &cursor.btree_cursor);
         cursor.btree_cursor = c;
         true
     }
@@ -98,7 +106,7 @@ impl Storage for File {
     fn cursor_is_end(&self, cursor: &Self::Cursor) -> bool {
         <Self as BTree<Vec<u8>, Vec<u8>>>::cursor_is_end(
             &self,
-            &cursor.meta,
+            &self.metas[cursor.source_index],
             &cursor.btree_cursor,
         )
     }
@@ -136,7 +144,9 @@ impl Storage for File {
         };
         let key = data_vec_to_bytes(&key);
         let value = data_vec_to_bytes(&data);
-        self.insert(&meta, node_i, &key, &value)
+        let r = self.insert(&meta, node_i, &key, &value);
+        dbg!(&self.pager.get_ref(node_i));
+        r
     }
 }
 
@@ -151,6 +161,7 @@ impl File {
                 schema: Schema::new_empty(),
                 source_page_indices: vec![],
                 key_types: vec![],
+                metas: vec![],
                 auto_increment: 1000,
             }
         } else {
@@ -162,6 +173,7 @@ impl File {
                 schema,
                 source_page_indices: vec![],
                 key_types: vec![],
+                metas: vec![],
                 auto_increment: 1000,
             }
         }
@@ -189,6 +201,15 @@ impl std::ops::Deref for Page {
 impl std::ops::DerefMut for Page {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.raw
+    }
+}
+
+impl std::fmt::Debug for Page {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for x in &self.raw {
+            write!(f, "{} ", x)?;
+        }
+        write!(f, "\n")
     }
 }
 

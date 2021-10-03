@@ -82,10 +82,13 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
         node_i: usize,
         key: &K,
-    ) -> Option<<Self::Node as BTreeNode<K, V>>::Cursor> {
+    ) -> Option<BTreeCursorInner<<Self::Node as BTreeNode<K, V>>::Cursor>> {
         let node = self.node_ref(node_i);
         if node.is_leaf(meta) {
-            node.find(meta, key)
+            Some(BTreeCursorInner {
+                node_i,
+                cursor: node.find(meta, key)?,
+            })
         } else {
             let node_i = node.get_child(meta, key);
             self.find(meta, node_i, key)

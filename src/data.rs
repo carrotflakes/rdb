@@ -30,13 +30,6 @@ impl Data {
             Data::String(s) => s.as_bytes().len(),
         }
     }
-
-    pub fn from_bytes(ty: Type, bytes: &[u8]) -> Option<Self> {
-        match ty {
-            Type::U64 => todo!(),
-            Type::String => String::from_utf8(bytes.to_vec()).map(Data::String).ok(),
-        }
-    }
 }
 
 pub fn data_vec_from_bytes(types: &[Type], bytes: &[u8]) -> Option<Vec<Data>> {
@@ -77,15 +70,15 @@ pub fn data_vec_to_bytes(datas: &[Data]) -> Vec<u8> {
     bytes
 }
 
-pub fn parse_u16(bytes: &[u8]) -> u16 {
+fn parse_u16(bytes: &[u8]) -> u16 {
     u16::from_le_bytes(bytes.try_into().unwrap())
 }
 
-pub fn parse_u32(bytes: &[u8]) -> u32 {
+fn parse_u32(bytes: &[u8]) -> u32 {
     u32::from_le_bytes(bytes.try_into().unwrap())
 }
 
-pub fn parse_u64(bytes: &[u8]) -> u64 {
+fn parse_u64(bytes: &[u8]) -> u64 {
     u64::from_le_bytes(bytes.try_into().unwrap())
 }
 

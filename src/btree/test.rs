@@ -184,14 +184,14 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
     }
 
     fn find(&self, meta: &Self::Meta, key: &usize) -> Option<Self::Cursor> {
-        if let Some(i) = self.keys.iter().position(|k| k == key) {
-            if let Err(values) = &self.values {
+        if let Some(i) = self.keys.iter().position(|k| k >= key) {
+            if self.values.is_err() {
                 Some(i)
             } else {
                 panic!("ook");
             }
         } else {
-            None
+            Some(self.keys.len())
         }
     }
 
