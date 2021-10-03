@@ -8,7 +8,7 @@ use rdb::{
             schema::parse_table_from_yaml,
         },
     },
-    query::{Insert, ProcessItem, Select, SelectSource},
+    query::{Expr, Insert, ProcessItem, Select, SelectSource},
     schema,
     storage::Storage,
 };
@@ -37,17 +37,21 @@ fn main() {
                 ],
                 primary_key: Some(0),
             },
-            parse_table_from_yaml(r"
+            parse_table_from_yaml(
+                r"
 name: message
 columns:
 -   name: id
     type: u64
+    auto_increment: true
 -   name: user_id
     type: u64
 -   name: text
     type: string
 primary_key: id
-            ").unwrap()
+            ",
+            )
+            .unwrap(),
         ],
     };
 
@@ -105,8 +109,8 @@ primary_key: id
         },
         process: vec![ProcessItem::Select {
             columns: vec![
-                ("id".to_owned(), "id!".to_owned()),
-                ("name".to_owned(), "name!".to_owned()),
+                ("id!".to_owned(), Expr::Column("id".to_owned())),
+                ("name!".to_owned(), Expr::Column("name".to_owned())),
             ],
         }],
         post_process: vec![],
@@ -115,7 +119,7 @@ primary_key: id
     print_table(&cs, &vs);
 
     engine
-        .execute_insert(&Insert {
+        .execute_insert(&Insert::Row {
             table_name: "message".to_owned(),
             column_names: vec!["id".to_owned(), "user_id".to_owned(), "text".to_owned()],
             values: vec![
@@ -176,14 +180,54 @@ process:
     right_key: id
 - select:
     -   name: id
-        as: id
+        from: id
     -   name: text
-        as: text
-    -   name: 'user.name'
-        as: user_name
+        from: text
+    -   name: user_name
+        from: 'user.name'
 ",
     )
     .unwrap();
+    let (cs, vs) = engine.execute_select(&query).unwrap();
+    print_table(&cs, &vs);
+
+    engine
+        .execute_insert(
+            &parse_insert_from_yaml(
+                r"
+table: user
+row:
+    id: 3
+    name: echo
+    email: echo
+",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+    engine
+        .execute_insert(
+            &parse_insert_from_yaml(
+                r"
+table: message
+select:
+    source:
+        table: message
+        iterate:
+            over:
+            -   id
+    process:
+    -   select:
+        -   name: text
+        -   name: user_id
+            value: 3
+",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
     let (cs, vs) = engine.execute_select(&query).unwrap();
     print_table(&cs, &vs);
 }

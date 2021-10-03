@@ -1,6 +1,6 @@
 use crate::{
     data::Type,
-    schema::{Column, Table},
+    schema::{Column, Default, Table},
 };
 
 use super::string_to_data;
@@ -17,7 +17,12 @@ pub fn parse_table_from_yaml(src: &str) -> Result<Table, serde_yaml::Error> {
                 "string" => Type::String,
                 _ => panic!("unexpected {:?}", c.r#type),
             },
-            default: c.default.clone().map(string_to_data),
+            default: match (&c.default, &c.auto_increment) {
+                (Some(default), false) => Some(Default::Data(string_to_data(default.clone()))),
+                (None, true) => Some(Default::AutoIncrement),
+                (None, false) => None,
+                _ => panic!("default???"),
+            },
         })
         .collect();
     let primary_key = table
@@ -48,5 +53,7 @@ mod mapping {
         pub r#type: String,
         #[serde(default)]
         pub default: Option<String>,
+        #[serde(default)]
+        pub auto_increment: bool,
     }
 }

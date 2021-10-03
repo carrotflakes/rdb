@@ -18,7 +18,7 @@ impl<S: Storage> Engine<S> {
         self.storage.schema()
     }
 
-    pub fn execute_select(&self, query: &Select) -> Result<(Vec<String>, Vec<Data>), String> {
+    pub fn execute_select(&self, select: &Select) -> Result<(Vec<String>, Vec<Data>), String> {
         let mut rows = vec![];
         let appender: RowAppender<_> = {
             let rows = unsafe { std::mem::transmute::<*mut Vec<Data>, &mut Vec<Data>>(&mut rows) };
@@ -27,33 +27,96 @@ impl<S: Storage> Engine<S> {
             })
         };
 
-        let table = if let Some((_, table)) = self.schema().get_table(&query.source.table_name) {
+        let columns = self.scan(select, appender)?;
+
+        Ok((columns, rows))
+    }
+
+    pub fn execute_insert(&mut self, insert: &query::Insert) -> Result<(), String> {
+        match insert {
+            query::Insert::Row {
+                table_name,
+                column_names,
+                values,
+            } => self.execute_insert_row(table_name, column_names, values),
+            query::Insert::Select { table_name, select } => {
+                self.execute_insert_from_select(table_name, select)
+            }
+        }
+    }
+
+    pub fn execute_insert_row(
+        &mut self,
+        table_name: &String,
+        column_names: &Vec<String>,
+        values: &[Data],
+    ) -> Result<(), String> {
+        let columns = self
+            .schema()
+            .get_table(table_name)
+            .unwrap()
+            .1
+            .columns
+            .clone();
+        let values = columns
+            .iter()
+            .map(|column| {
+                if let Some(i) = column_names.iter().position(|n| &column.name == n) {
+                    values[i].clone()
+                } else if let Some(default) = &column.default {
+                    match default {
+                        crate::schema::Default::Data(d) => d.clone(),
+                        crate::schema::Default::AutoIncrement => {
+                            Data::U64(self.storage.issue_auto_increment(table_name, &column.name))
+                        }
+                    }
+                } else {
+                    panic!("no default")
+                }
+            })
+            .collect();
+        self.storage.add_row(&table_name, values)
+    }
+
+    pub fn execute_insert_from_select(
+        &mut self,
+        table_name: &String,
+        select: &Select,
+    ) -> Result<(), String> {
+        let (columns, rows) = self.execute_select(select)?;
+        for row in rows.chunks(columns.len()) {
+            self.execute_insert_row(table_name, &columns, row)?;
+        }
+        Ok(())
+    }
+
+    fn scan(&self, select: &Select, appender: RowAppender<S>) -> Result<Vec<String>, String> {
+        let table = if let Some((_, table)) = self.schema().get_table(&select.source.table_name) {
             table
         } else {
             return Err(format!("missing table"));
         };
-
         let columns = table.columns.iter().map(|c| c.name.to_owned()).collect();
         let (columns, mut appender) = build_excecutable_query_process(
             self.schema(),
             &self.storage,
             columns,
-            &query.process,
+            &select.process,
             appender,
         );
 
         let source = self
             .storage
-            .source_index(&table.name, &query.source.keys)
+            .source_index(&table.name, &select.source.keys)
             .unwrap();
-        let mut cursor = if let Some(from) = &query.source.from {
+        let mut cursor = if let Some(from) = &select.source.from {
             self.storage.get_cursor_just(source, from)
         } else {
             self.storage.get_cursor_first(source)
         };
-        let end_check_columns = query.source.to.as_ref().map(|to| {
+        let end_check_columns = select.source.to.as_ref().map(|to| {
             (
-                query
+                select
                     .source
                     .keys
                     .iter()
@@ -80,28 +143,7 @@ impl<S: Storage> Engine<S> {
                 break;
             }
         }
-        Ok((columns, rows))
-    }
-
-    pub fn execute_insert(&mut self, insert: &query::Insert) -> Result<(), String> {
-        let values = self
-            .schema()
-            .get_table(&insert.table_name)
-            .unwrap()
-            .1
-            .columns
-            .iter()
-            .map(|column| {
-                if let Some(i) = insert.column_names.iter().position(|n| &column.name == n) {
-                    insert.values[i].clone()
-                } else if let Some(default) = &column.default {
-                    default.clone()
-                } else {
-                    panic!("no default")
-                }
-            })
-            .collect();
-        self.storage.add_row(&insert.table_name, values)
+        Ok(columns)
     }
 }
 
@@ -121,36 +163,8 @@ fn build_excecutable_query_process<S: Storage>(
 ) -> (Vec<String>, RowAppender<S>) {
     let mut columnss = vec![columns];
     for p in process {
-        let mut columns = columnss.last().unwrap().clone();
-        match p {
-            ProcessItem::Select { columns: cs } => {
-                columns = cs.iter().map(|x| x.1.to_string()).collect();
-            }
-            ProcessItem::Filter {
-                left_key,
-                right_key,
-            } => {}
-            ProcessItem::Join {
-                table_name,
-                left_key,
-                right_key,
-            } => {
-                columns = columns.clone();
-                columns.extend(
-                    schema
-                        .get_table(table_name)
-                        .unwrap()
-                        .1
-                        .columns
-                        .iter()
-                        .map(|c| format!("{}.{}", table_name, c.name)),
-                );
-            }
-            ProcessItem::Distinct { column_name } => todo!(),
-            ProcessItem::AddColumn { hoge } => todo!(),
-            ProcessItem::Skip { num } => todo!(),
-            ProcessItem::Limit { num } => todo!(),
-        }
+        let columns = columnss.last().unwrap();
+        let columns = select_process_item_column(schema, p, columns);
         columnss.push(columns);
     }
 
@@ -160,12 +174,28 @@ fn build_excecutable_query_process<S: Storage>(
 
         match p {
             ProcessItem::Select { columns: cs } => {
-                let map: Vec<_> = cs
+                enum Expr2 {
+                    Column(usize),
+                    Data(Data),
+                }
+                let exprs: Vec<_> = cs
                     .iter()
-                    .map(|(src, _)| pre_columns.iter().position(|x| x == src).unwrap())
+                    .map(|(_, expr)| match expr {
+                        query::Expr::Column(c) => {
+                            Expr2::Column(pre_columns.iter().position(|x| x == c).unwrap())
+                        }
+                        query::Expr::Data(d) => Expr2::Data(d.clone()),
+                    })
                     .collect();
                 appender = Box::new(move |ctx, row| {
-                    appender(ctx, map.iter().map(|i| row[*i].clone()).collect())
+                    let row = exprs
+                        .iter()
+                        .map(|e| match e {
+                            Expr2::Column(i) => row[*i].clone(),
+                            Expr2::Data(d) => d.clone(),
+                        })
+                        .collect();
+                    appender(ctx, row)
                 });
             }
             ProcessItem::Filter {
@@ -225,4 +255,39 @@ fn build_excecutable_query_process<S: Storage>(
         }
     }
     (columnss.pop().unwrap(), appender)
+}
+
+fn select_process_item_column(
+    schema: &Schema,
+    process_item: &ProcessItem,
+    columns: &Vec<String>,
+) -> Vec<String> {
+    match process_item {
+        ProcessItem::Select { columns: cs } => cs.iter().map(|x| x.0.to_string()).collect(),
+        ProcessItem::Filter {
+            left_key,
+            right_key,
+        } => columns.clone(),
+        ProcessItem::Join {
+            table_name,
+            left_key,
+            right_key,
+        } => columns
+            .iter()
+            .cloned()
+            .chain(
+                schema
+                    .get_table(table_name)
+                    .unwrap()
+                    .1
+                    .columns
+                    .iter()
+                    .map(|c| format!("{}.{}", table_name, c.name)),
+            )
+            .collect(),
+        ProcessItem::Distinct { column_name } => columns.clone(),
+        ProcessItem::AddColumn { hoge } => columns.clone(),
+        ProcessItem::Skip { num } => columns.clone(),
+        ProcessItem::Limit { num } => columns.clone(),
+    }
 }

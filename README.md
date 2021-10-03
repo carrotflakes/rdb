@@ -22,7 +22,7 @@ schema:
         keys
         - id  
 
-query
+select:
   name: getUser
   subTables
     - ...
@@ -50,4 +50,8 @@ query
     - sortBy: id
     - skip: 10
     - limit: 10
+
+insert:
+  table: message
+  select: ...
 ```

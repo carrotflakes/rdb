@@ -19,7 +19,7 @@ pub struct SelectSource {
 #[derive(Debug, Clone)]
 pub enum ProcessItem {
     Select {
-        columns: Vec<(String, String)>,
+        columns: Vec<(String, Expr)>,
     },
     Filter {
         left_key: String,
@@ -45,6 +45,12 @@ pub enum ProcessItem {
 }
 
 #[derive(Debug, Clone)]
+pub enum Expr {
+    Column(String),
+    Data(Data),
+}
+
+#[derive(Debug, Clone)]
 pub enum PostProcessItem {
     SortBy { column_name: String },
     Skip { num: usize },
@@ -52,10 +58,16 @@ pub enum PostProcessItem {
 }
 
 #[derive(Debug, Clone)]
-pub struct Insert {
-    pub table_name: String,
-    pub column_names: Vec<String>,
-    pub values: Vec<Data>,
+pub enum Insert {
+    Row {
+        table_name: String,
+        column_names: Vec<String>,
+        values: Vec<Data>,
+    },
+    Select {
+        table_name: String,
+        select: Select,
+    },
 }
 
 #[derive(Debug, Clone)]

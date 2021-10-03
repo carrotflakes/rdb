@@ -20,7 +20,13 @@ pub struct Table {
 pub struct Column {
     pub name: String,
     pub dtype: Type,
-    pub default: Option<Data>,
+    pub default: Option<Default>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Default {
+    Data(Data),
+    AutoIncrement,
 }
 
 impl Schema {

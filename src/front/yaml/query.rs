@@ -1,25 +1,29 @@
 use crate::{
-    front::yaml::string_to_data,
-    query::{Insert, ProcessItem, Select, SelectSource},
+    front::yaml::{query::mapping::ProcessSelectColumn, string_to_data},
+    query::{Expr, Insert, ProcessItem, Select, SelectSource},
 };
 
 pub fn parse_select_from_yaml(src: &str) -> Result<Select, serde_yaml::Error> {
-    let query: mapping::Query = serde_yaml::from_str(src)?;
-    Ok(Select {
+    let select: mapping::Select = serde_yaml::from_str(src)?;
+    Ok(map_select(select))
+}
+
+pub fn map_select(select: mapping::Select) -> Select {
+    Select {
         sub_queries: vec![],
-        source: match query.source.iterate {
-            mapping::QuerySourceIterate {
+        source: match select.source.iterate {
+            mapping::SelectSourceIterate {
                 over,
                 from,
                 to,
                 just: None,
             } => SelectSource {
-                table_name: query.source.table,
+                table_name: select.source.table,
                 keys: over,
                 from: from.map(|x| x.into_iter().map(string_to_data).collect()),
                 to: to.map(|x| x.into_iter().map(string_to_data).collect()),
             },
-            mapping::QuerySourceIterate {
+            mapping::SelectSourceIterate {
                 over,
                 from: None,
                 to: None,
@@ -27,7 +31,7 @@ pub fn parse_select_from_yaml(src: &str) -> Result<Select, serde_yaml::Error> {
             } => {
                 let just = Some(just.into_iter().map(string_to_data).collect());
                 SelectSource {
-                    table_name: query.source.table,
+                    table_name: select.source.table,
                     keys: over,
                     from: just.clone(),
                     to: just,
@@ -37,12 +41,34 @@ pub fn parse_select_from_yaml(src: &str) -> Result<Select, serde_yaml::Error> {
                 panic!("unexpected iterate")
             }
         },
-        process: query
+        process: select
             .process
             .into_iter()
             .map(|x| match x {
                 mapping::ProcessItem::Select(columns) => ProcessItem::Select {
-                    columns: columns.into_iter().map(|x| (x.name, x.r#as)).collect(),
+                    columns: columns
+                        .into_iter()
+                        .map(|x| match x {
+                            ProcessSelectColumn {
+                                name: Some(name),
+                                from: Some(from),
+                                value: None,
+                            } => (name, Expr::Column(from)),
+                            ProcessSelectColumn {
+                                name: Some(name),
+                                from: None,
+                                value: Some(value),
+                            } => (name, Expr::Data(string_to_data(value))),
+                            ProcessSelectColumn {
+                                name: Some(name),
+                                from: None,
+                                value: None,
+                            } => (name.clone(), Expr::Column(name)),
+                            _ => {
+                                panic!("oops")
+                            }
+                        })
+                        .collect(),
                 },
                 mapping::ProcessItem::Filter {
                     left_key,
@@ -63,14 +89,14 @@ pub fn parse_select_from_yaml(src: &str) -> Result<Select, serde_yaml::Error> {
             })
             .collect(),
         post_process: vec![],
-    })
+    }
 }
 
 pub fn query_to_yaml(query: &Select) -> String {
-    serde_yaml::to_string(&mapping::Query {
-        source: mapping::QuerySource {
+    serde_yaml::to_string(&mapping::Select {
+        source: mapping::SelectSource {
             table: query.source.table_name.clone(),
-            iterate: mapping::QuerySourceIterate {
+            iterate: mapping::SelectSourceIterate {
                 over: query.source.keys.clone(),
                 from: None,
                 to: None,
@@ -84,17 +110,31 @@ pub fn query_to_yaml(query: &Select) -> String {
 }
 
 pub fn parse_insert_from_yaml(src: &str) -> Result<Insert, serde_yaml::Error> {
-    let query: mapping::Insert = serde_yaml::from_str(src)?;
-    Ok(Insert {
-        table_name: query.table,
-        column_names: query.row.keys().map(|s| s.to_owned()).collect(),
-        values: query
-            .row
-            .values()
-            .map(|s| s.to_owned())
-            .map(string_to_data)
-            .collect(),
-    })
+    let insert: mapping::Insert = serde_yaml::from_str(src)?;
+    match insert {
+        mapping::Insert {
+            table,
+            row: Some(row),
+            select: None,
+        } => Ok(Insert::Row {
+            table_name: table,
+            column_names: row.keys().map(|s| s.to_owned()).collect(),
+            values: row
+                .values()
+                .map(|s| s.to_owned())
+                .map(string_to_data)
+                .collect(),
+        }),
+        mapping::Insert {
+            table,
+            row: None,
+            select: Some(select),
+        } => Ok(Insert::Select {
+            table_name: table,
+            select: map_select(select),
+        }),
+        _ => panic!("row or select"),
+    }
 }
 
 mod mapping {
@@ -104,8 +144,8 @@ mod mapping {
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
-    pub struct Query {
-        pub source: QuerySource,
+    pub struct Select {
+        pub source: SelectSource,
         #[serde(default)]
         pub process: Vec<ProcessItem>,
         #[serde(default)]
@@ -114,14 +154,14 @@ mod mapping {
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
-    pub struct QuerySource {
+    pub struct SelectSource {
         pub table: String,
-        pub iterate: QuerySourceIterate,
+        pub iterate: SelectSourceIterate,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
-    pub struct QuerySourceIterate {
+    pub struct SelectSourceIterate {
         pub over: Vec<String>,
         pub from: Option<Vec<String>>,
         pub to: Option<Vec<String>>,
@@ -146,8 +186,9 @@ mod mapping {
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
     pub struct ProcessSelectColumn {
-        pub name: String,
-        pub r#as: String,
+        pub name: Option<String>,
+        pub from: Option<String>,
+        pub value: Option<String>,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -162,6 +203,7 @@ mod mapping {
     #[serde(rename_all = "snake_case")]
     pub struct Insert {
         pub table: String,
-        pub row: HashMap<String, String>,
+        pub row: Option<HashMap<String, String>>,
+        pub select: Option<Select>,
     }
 }

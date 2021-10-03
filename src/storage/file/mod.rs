@@ -19,6 +19,7 @@ pub struct File {
     pager: Pager<Page>,
     schema: Schema,
     source_page_indices: Vec<usize>,
+    auto_increment: u64,
 }
 
 pub struct FileCursor {
@@ -44,11 +45,12 @@ impl Storage for File {
         self.source_page_indices.push(page_index); // ??
     }
 
-    fn source_index(
-        &self,
-        table_name: &str,
-        key_columns: &[String],
-    ) -> Option<Self::SourceIndex> {
+    fn issue_auto_increment(&mut self, table_name: &str, column_name: &str) -> u64 {
+        self.auto_increment += 1;
+        self.auto_increment
+    }
+
+    fn source_index(&self, table_name: &str, key_columns: &[String]) -> Option<Self::SourceIndex> {
         let (i, _table) = self.schema.get_table(table_name)?;
         Some(self.source_page_indices[i])
         // todo!()
@@ -122,6 +124,7 @@ impl File {
                 pager,
                 schema: Schema::new_empty(),
                 source_page_indices: vec![],
+                auto_increment: 0,
             }
         } else {
             let first_page: &Page = pager.get_ref(0);
@@ -131,6 +134,7 @@ impl File {
                 pager,
                 schema,
                 source_page_indices: vec![],
+                auto_increment: 0,
             }
         }
     }
