@@ -56,7 +56,10 @@ primary_key: id
         ],
     };
 
-    let mut s = rdb::storage::in_memory::InMemory::new();
+    // let mut s = rdb::storage::in_memory::InMemory::new();
+    let filepath = "main.rdb";
+    std::fs::remove_file(filepath);
+    let mut s = rdb::storage::file::File::open(filepath);
     s.add_table(schema.tables[0].clone());
     s.add_table(schema.tables[1].clone());
     dbg!(s
@@ -231,4 +234,55 @@ select:
 
     let (cs, vs) = engine.execute_select(&query).unwrap();
     print_table(&cs, &vs);
+}
+
+
+#[test]
+fn bintest() {
+    let schema = schema::Schema {
+        tables: vec![
+            schema::Table {
+                name: "user".to_string(),
+                columns: vec![
+                    schema::Column {
+                        name: "id".to_string(),
+                        dtype: Type::U64,
+                        default: None,
+                    },
+                    schema::Column {
+                        name: "name".to_string(),
+                        dtype: Type::String,
+                        default: None,
+                    },
+                    schema::Column {
+                        name: "email".to_string(),
+                        dtype: Type::String,
+                        default: None,
+                    },
+                ],
+                primary_key: Some(0),
+                constraints: Vec::new(),
+            },
+            parse_table_from_yaml(
+                r"
+name: message
+columns:
+-   name: id
+    type: u64
+    auto_increment: true
+-   name: user_id
+    type: u64
+-   name: text
+    type: string
+primary_key: id
+            ",
+            )
+            .unwrap(),
+        ],
+    };
+
+    let mut encoded: Vec<u8> = bincode::serialize(&schema).unwrap();
+    dbg!(encoded.len());
+    encoded.extend([0, 1, 2, 3, 0, 0]);
+    dbg!(bincode::deserialize::<schema::Schema>(&encoded).unwrap());
 }

@@ -174,7 +174,7 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
         }
     }
 
-    fn init_as_root(&mut self, _: &(), key: &usize, i1: usize, i2: usize) {
+    fn init_as_root_internal(&mut self, _: &(), key: &usize, i1: usize, i2: usize) {
         self.keys = vec![key.clone()];
         self.values = Ok(vec![i1, i2]);
     }
@@ -195,7 +195,7 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
         }
     }
 
-    fn cursor_get(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> Option<(super::Key, V)> {
+    fn cursor_get(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> Option<(usize, V)> {
         if let Err(values) = &self.values {
             Some((self.keys[*cursor].clone(), values[*cursor].clone()))
         } else {

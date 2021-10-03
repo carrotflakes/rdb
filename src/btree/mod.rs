@@ -1,7 +1,5 @@
 mod test;
 
-pub type Key = usize;
-
 pub type BTreeCursor<K, V, B> =
     BTreeCursorInner<<<B as BTree<K, V>>::Node as BTreeNode<K, V>>::Cursor>;
 
@@ -17,6 +15,7 @@ pub trait BTreeNode<K: Clone + PartialEq + PartialOrd, V: Clone> {
     fn is_leaf(&self, meta: &Self::Meta) -> bool;
     fn get_parent(&self, meta: &Self::Meta) -> Option<usize>;
     fn set_parent(&mut self, meta: &Self::Meta, i: usize);
+    // returns number of values (not keys)
     fn size(&self, meta: &Self::Meta) -> usize;
     // expect internal node
     fn is_full(&self, meta: &Self::Meta) -> bool;
@@ -29,7 +28,7 @@ pub trait BTreeNode<K: Clone + PartialEq + PartialOrd, V: Clone> {
     fn remove(&mut self, meta: &Self::Meta, key: &K) -> bool;
     fn split_out(&mut self, meta: &Self::Meta) -> (K, Self);
     fn new_internal(meta: &Self::Meta) -> Self;
-    fn init_as_root(&mut self, meta: &Self::Meta, key: &K, i1: usize, i2: usize);
+    fn init_as_root_internal(&mut self, meta: &Self::Meta, key: &K, i1: usize, i2: usize);
 
     fn first_cursor(&self, meta: &Self::Meta) -> Self::Cursor;
     fn find(&self, meta: &Self::Meta, key: &K) -> Option<Self::Cursor>;
@@ -116,6 +115,7 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
             }
         } else {
             let node_i = node.get_child(meta, key);
+            debug_assert_ne!(node_i, 0);
             self.insert(meta, node_i, key, value)
         }
     }
@@ -157,7 +157,8 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
             let i2 = self.push(node);
             self.node_mut(i1).set_parent(meta, node_i);
             self.node_mut(i2).set_parent(meta, node_i);
-            self.node_mut(node_i).init_as_root(meta, key, i1, i2);
+            self.node_mut(node_i)
+                .init_as_root_internal(meta, key, i1, i2);
             self.reparent(meta, i1);
             Ok(i2)
         }

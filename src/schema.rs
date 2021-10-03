@@ -99,4 +99,8 @@ impl Table {
     pub fn check_row_is_legal(&self, row: &Vec<Data>) -> Result<(), String> {
         todo!()
     }
+
+    // pub fn row_to_key(&self, row:&Vec<Data>) ->Vec<Data> {
+    //     self
+    // }
 }
