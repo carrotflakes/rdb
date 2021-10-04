@@ -233,18 +233,19 @@ fn build_excecutable_query_process<S: Storage>(
                         return;
                     }
                     while {
-                        if let Some(append_row) = ctx.storage.cursor_get_row(&cursor) {
-                            if append_row[right_i] == row[left_i] {
-                                let mut row_ = row.clone();
-                                row_.extend(append_row);
-                                appender(ctx, row_);
-                                ctx.storage.cursor_advance(&mut cursor)
+                        !ctx.storage.cursor_is_end(&cursor)
+                            && if let Some(append_row) = ctx.storage.cursor_get_row(&cursor) {
+                                if append_row[right_i] == row[left_i] {
+                                    let mut row_ = row.clone();
+                                    row_.extend(append_row);
+                                    appender(ctx, row_);
+                                    ctx.storage.cursor_advance(&mut cursor)
+                                } else {
+                                    false
+                                }
                             } else {
                                 false
                             }
-                        } else {
-                            false
-                        }
                     } {}
                 });
             }

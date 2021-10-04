@@ -20,6 +20,7 @@ pub struct File {
     schema: Schema,
     source_page_indices: Vec<usize>,
     key_types: Vec<Vec<Type>>,
+    value_types: Vec<Vec<Type>>,
     metas: Vec<Meta>,
     auto_increment: u64,
 }
@@ -49,6 +50,8 @@ impl Storage for File {
             } else {
                 vec![]
             });
+        self.value_types
+            .push(table.columns.iter().map(|c| c.dtype.clone()).collect());
         self.metas.push(Meta {
             key_size: if let Some(primary_key) = table.primary_key {
                 table.columns[primary_key].dtype.size()
@@ -73,14 +76,14 @@ impl Storage for File {
 
     fn source_index(&self, table_name: &str, key_columns: &[String]) -> Option<Self::SourceIndex> {
         let (i, _table) = self.schema.get_table(table_name)?;
-        Some(self.source_page_indices[i])
+        Some(i)
         // todo!()
     }
 
     fn get_cursor_first(&self, source_index: Self::SourceIndex) -> Self::Cursor {
         FileCursor {
             source_index,
-            btree_cursor: self.first_cursor(&self.metas[source_index], source_index),
+            btree_cursor: self.first_cursor(&self.metas[source_index], self.source_page_indices[source_index]),
         }
     }
 
@@ -88,13 +91,13 @@ impl Storage for File {
         let key = data_vec_to_bytes(key);
         FileCursor {
             source_index,
-            btree_cursor: self.find(&self.metas[source_index], source_index, &key).unwrap(),
+            btree_cursor: self.find(&self.metas[source_index], self.source_page_indices[source_index], &key).unwrap(),
         }
     }
 
     fn cursor_get_row(&self, cursor: &Self::Cursor) -> Option<Vec<Data>> {
         self.cursor_get(&self.metas[cursor.source_index], &cursor.btree_cursor)
-            .map(|x| data_vec_from_bytes(&self.key_types[cursor.source_index], &x.1).unwrap())
+            .map(|x| data_vec_from_bytes(&self.value_types[cursor.source_index], &x.1).unwrap())
     }
 
     fn cursor_advance(&self, cursor: &mut Self::Cursor) -> bool {
@@ -145,7 +148,6 @@ impl Storage for File {
         let key = data_vec_to_bytes(&key);
         let value = data_vec_to_bytes(&data);
         let r = self.insert(&meta, node_i, &key, &value);
-        dbg!(&self.pager.get_ref(node_i));
         r
     }
 }
@@ -161,6 +163,7 @@ impl File {
                 schema: Schema::new_empty(),
                 source_page_indices: vec![],
                 key_types: vec![],
+                value_types: vec![],
                 metas: vec![],
                 auto_increment: 1000,
             }
@@ -173,6 +176,7 @@ impl File {
                 schema,
                 source_page_indices: vec![],
                 key_types: vec![],
+                value_types: vec![],
                 metas: vec![],
                 auto_increment: 1000,
             }

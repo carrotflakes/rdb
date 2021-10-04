@@ -3,6 +3,7 @@ mod test;
 pub type BTreeCursor<K, V, B> =
     BTreeCursorInner<<<B as BTree<K, V>>::Node as BTreeNode<K, V>>::Cursor>;
 
+#[derive(Debug)]
 pub struct BTreeCursorInner<NodeCursor: Clone> {
     node_i: usize,
     cursor: NodeCursor,
@@ -33,7 +34,7 @@ pub trait BTreeNode<K: Clone + PartialEq + PartialOrd, V: Clone> {
     fn first_cursor(&self, meta: &Self::Meta) -> Self::Cursor;
     fn find(&self, meta: &Self::Meta, key: &K) -> Option<Self::Cursor>;
     fn cursor_get(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> Option<(K, V)>;
-    fn cursor_next(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> Self::Cursor;
+    fn cursor_next(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> (usize, Self::Cursor);
     fn cursor_is_end(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> bool;
 }
 
@@ -204,11 +205,17 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
         cursor: &BTreeCursor<K, V, Self>,
     ) -> BTreeCursor<K, V, Self> {
+        //????
+        let (next_node_i, c) = self
+            .node_ref(cursor.node_i)
+            .cursor_next(meta, &cursor.cursor);
         BTreeCursorInner {
-            node_i: cursor.node_i,
-            cursor: self
-                .node_ref(cursor.node_i)
-                .cursor_next(meta, &cursor.cursor),
+            node_i: if next_node_i == usize::MAX {
+                cursor.node_i
+            } else {
+                next_node_i
+            },
+            cursor: c,
         }
     }
 
@@ -217,7 +224,9 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
         cursor: &BTreeCursor<K, V, Self>,
     ) -> bool {
-        self.node_ref(cursor.node_i)
-            .cursor_is_end(meta, &cursor.cursor)
+        cursor.node_i == 0
+            || self
+                .node_ref(cursor.node_i)
+                .cursor_is_end(meta, &cursor.cursor)
     }
 }

@@ -203,7 +203,7 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
         }
     }
 
-    fn cursor_next(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> Self::Cursor {
+    fn cursor_next(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> (usize, Self::Cursor) {
         todo!()
     }
 

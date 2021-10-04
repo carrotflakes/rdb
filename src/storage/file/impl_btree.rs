@@ -180,28 +180,27 @@ impl BTreeNode<Key, Value> for Page {
                     key_offset + key_interval,
                 );
                 let end = if insert_index < size {
-                    parse_u16(&self[key_offset + key_size..key_offset + key_size + INDEX_SIZE])
+                    parse_u16(&self[key_offset - INDEX_SIZE..key_offset])
                         as usize
                 } else {
                     last_value_index
                 };
                 self.copy_within(last_value_index..end, last_value_index - value.len());
 
-                // todo value_indexを再計算
-
+                // recalculate value_index
                 for i in (insert_index..size).rev() {
                     let offset = HEADER_SIZE + key_interval * (i + 1) + key_size;
                     let s = parse_u16(&self[offset..offset + INDEX_SIZE]);
                     self[offset..offset + INDEX_SIZE]
                         .copy_from_slice(&(s - value.len() as u16).to_le_bytes());
                 }
-                let offset = HEADER_SIZE + key_interval * insert_index + key_size;
+                let value_index_offset = HEADER_SIZE + key_interval * insert_index + key_size;
                 let s = if insert_index == 0 {
                     PAGE_SIZE as u16
                 } else {
-                    parse_u16(&self[offset - key_interval..offset - key_interval + INDEX_SIZE])
+                    parse_u16(&self[value_index_offset - key_interval..value_index_offset - key_interval + INDEX_SIZE])
                 };
-                self[offset..offset + INDEX_SIZE]
+                self[value_index_offset..value_index_offset + INDEX_SIZE]
                     .copy_from_slice(&(s - value.len() as u16).to_le_bytes());
 
                 // insert
@@ -367,18 +366,66 @@ impl BTreeNode<Key, Value> for Page {
     }
 
     fn cursor_get(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> Option<(Key, Value)> {
-        todo!()
+        let size = self.size(meta);
+        match meta {
+            Meta {
+                key_size: Some(0),
+                value_size: Some(value_size),
+            } => todo!(),
+            Meta {
+                key_size: Some(0),
+                value_size: None,
+            } => todo!(),
+            Meta {
+                key_size: Some(key_size),
+                value_size: Some(_),
+            } => {
+                todo!();
+            }
+            Meta {
+                key_size: Some(key_size),
+                value_size: None,
+            } => {
+                let key_interval = key_size + INDEX_SIZE;
+                let value_index_index = HEADER_SIZE + key_interval * cursor + key_size;
+                let value_start =
+                    parse_u16(&self[value_index_index..value_index_index + INDEX_SIZE]) as usize;
+                let value_end = if *cursor == 0 {
+                    PAGE_SIZE as usize
+                } else {
+                    let value_index_index = HEADER_SIZE + key_interval * (cursor - 1) + key_size;
+                    parse_u16(&self[value_index_index..value_index_index + INDEX_SIZE]) as usize
+                };
+                let key_index = HEADER_SIZE + key_interval * cursor;
+                let key = self[key_index..key_index + key_size].to_vec();
+                let value = self[value_start..value_end].to_vec();
+
+                Some((key, value))
+            }
+            Meta {
+                key_size: None,
+                value_size: Some(value_size),
+            } => todo!(),
+            Meta {
+                key_size: None,
+                value_size: None,
+            } => todo!(),
+        }
     }
 
-    fn cursor_next(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> Self::Cursor {
-        todo!()
+    fn cursor_next(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> (usize, Self::Cursor) {
+        if self.size(meta) <= cursor + 1 {
+            (parse_u32(&self[1 + 4 + 2..1 + 4 + 2 + 4]) as usize, 0)
+        } else {
+            (usize::MAX, cursor + 1)
+        }
     }
 
     fn cursor_is_end(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> bool {
-        // self.size <= cursor && {
-        //     let next = parse_u32(&self[1 + 4 + 2..1 + 4 + 2 + 4]);
-        // }
-        todo!()
+        self.size(meta) <= *cursor && {
+            let next = parse_u32(&self[1 + 4 + 2..1 + 4 + 2 + 4]);
+            next == 0
+        }
     }
 }
 
