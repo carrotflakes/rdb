@@ -45,19 +45,14 @@ impl<S: Storage> Engine<S> {
         }
     }
 
-    pub fn execute_insert_row(
+    fn execute_insert_row(
         &mut self,
         table_name: &String,
         column_names: &Vec<String>,
         values: &[Data],
     ) -> Result<(), String> {
-        let columns = self
-            .schema()
-            .get_table(table_name)
-            .unwrap()
-            .1
-            .columns
-            .clone();
+        let (_, table) = self.schema().get_table(table_name).unwrap();
+        let columns = table.columns.clone();
         let values = columns
             .iter()
             .map(|column| {
@@ -78,7 +73,7 @@ impl<S: Storage> Engine<S> {
         self.storage.add_row(&table_name, values)
     }
 
-    pub fn execute_insert_from_select(
+    fn execute_insert_from_select(
         &mut self,
         table_name: &String,
         select: &Select,
@@ -271,15 +266,8 @@ fn select_process_item_column(
 ) -> Vec<String> {
     match process_item {
         ProcessItem::Select { columns: cs } => cs.iter().map(|x| x.0.to_string()).collect(),
-        ProcessItem::Filter {
-            left_key,
-            right_key,
-        } => columns.clone(),
-        ProcessItem::Join {
-            table_name,
-            left_key,
-            right_key,
-        } => columns
+        ProcessItem::Filter { .. } => columns.clone(),
+        ProcessItem::Join { table_name, .. } => columns
             .iter()
             .cloned()
             .chain(
@@ -292,9 +280,9 @@ fn select_process_item_column(
                     .map(|c| format!("{}.{}", table_name, c.name)),
             )
             .collect(),
-        ProcessItem::Distinct { column_name } => columns.clone(),
+        ProcessItem::Distinct { .. } => columns.clone(),
         ProcessItem::AddColumn { hoge } => columns.clone(),
-        ProcessItem::Skip { num } => columns.clone(),
-        ProcessItem::Limit { num } => columns.clone(),
+        ProcessItem::Skip { .. } => columns.clone(),
+        ProcessItem::Limit { .. } => columns.clone(),
     }
 }

@@ -169,7 +169,7 @@ impl Storage for InMemory {
     }
 
     fn flush(&self) {
-        print!("InMemory flushed!");
+        println!("InMemory flushed!");
     }
 }
 

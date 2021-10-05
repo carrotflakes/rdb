@@ -58,7 +58,9 @@ primary_key: id
 
     // let mut s = rdb::storage::in_memory::InMemory::new();
     let filepath = "main.rdb";
-    std::fs::remove_file(filepath);
+    if let Ok(_) = std::fs::remove_file(filepath) {
+        println!("{:?} removed", filepath);
+    };
     let mut s = rdb::storage::file::File::open(filepath);
     s.add_table(schema.tables[0].clone());
     s.add_table(schema.tables[1].clone());

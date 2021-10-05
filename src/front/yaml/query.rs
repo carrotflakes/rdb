@@ -92,23 +92,6 @@ pub fn map_select(select: mapping::Select) -> Select {
     }
 }
 
-pub fn query_to_yaml(query: &Select) -> String {
-    serde_yaml::to_string(&mapping::Select {
-        source: mapping::SelectSource {
-            table: query.source.table_name.clone(),
-            iterate: mapping::SelectSourceIterate {
-                over: query.source.keys.clone(),
-                from: None,
-                to: None,
-                just: None,
-            },
-        },
-        process: todo!(),
-        post_process: vec![],
-    })
-    .unwrap()
-}
-
 pub fn parse_insert_from_yaml(src: &str) -> Result<Insert, serde_yaml::Error> {
     let insert: mapping::Insert = serde_yaml::from_str(src)?;
     match insert {
