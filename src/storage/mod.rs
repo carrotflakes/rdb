@@ -26,6 +26,8 @@ pub trait Storage: 'static {
     fn cursor_update(&self, cursor: &mut Self::Cursor, data: Vec<Data>) -> bool;
 
     fn add_row(&mut self, table_name: &str, data: Vec<Data>) -> Result<(), String>;
+
+    fn flush(&self);
 }
 
 // full scan

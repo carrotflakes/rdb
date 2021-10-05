@@ -12,7 +12,22 @@ pub type Value = Vec<u8>;
 
 pub type BTreeCursor = crate::btree::BTreeCursor<Key, Value, File>;
 
-// # layout
+// # internal node layout
+// [1] leaf flag // TODO なくしたい
+// [4] parent node id
+// [2] size
+//
+// ## key_size 0
+// child...
+//
+// ## key_size fixed
+// key..., child...
+//
+// ## key_size variable
+// (key_size, key)..., ...child
+//
+//
+// # leaf node layout
 // [1] leaf flag // TODO なくしたい
 // [4] parent node id
 // [2] size

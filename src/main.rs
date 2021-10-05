@@ -234,6 +234,8 @@ select:
 
     let (cs, vs) = engine.execute_select(&query).unwrap();
     print_table(&cs, &vs);
+
+    engine.flush();
 }
 
 

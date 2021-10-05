@@ -167,6 +167,10 @@ impl Storage for InMemory {
         }
         Ok(())
     }
+
+    fn flush(&self) {
+        print!("InMemory flushed!");
+    }
 }
 
 impl InMemory {

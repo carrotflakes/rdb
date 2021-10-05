@@ -159,6 +159,12 @@ impl Storage for File {
         let r = self.insert(&meta, node_i, &key, &value);
         r
     }
+
+    fn flush(&self) {
+        #[allow(mutable_transmutes)]
+        let pager = unsafe { std::mem::transmute::<_, &mut Pager<Page>>(&self.pager) };
+        pager.save()
+    }
 }
 
 impl File {

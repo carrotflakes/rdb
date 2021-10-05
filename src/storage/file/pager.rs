@@ -14,10 +14,16 @@ impl<P> Page for P where
 {
 }
 
+#[derive(Debug)]
+struct PageContainer<P: Page> {
+    page: P,
+    modified: bool,
+}
+
 pub struct Pager<P: Page> {
     file: Cursor<File>,
     file_len: u64,
-    pages: Vec<Option<P>>,
+    pages: Vec<Option<PageContainer<P>>>,
 }
 
 impl<P: Page> Pager<P> {
@@ -44,12 +50,21 @@ impl<P: Page> Pager<P> {
     }
 
     pub fn get_ref(&mut self, i: usize) -> &P {
-        self.get_mut(i)
+        &self.get_mut_inner(i).page
     }
 
     pub fn get_mut(&mut self, i: usize) -> &mut P {
+        let container = self.get_mut_inner(i);
+        container.modified = true; //?
+        &mut container.page
+    }
+
+    fn get_mut_inner(&mut self, i: usize) -> &mut PageContainer<P> {
         if self.pages.len() == i {
-            self.pages.push(Some(P::from([0; PAGE_SIZE as usize])));
+            self.pages.push(Some(PageContainer {
+                page: P::from([0; PAGE_SIZE as usize]),
+                modified: false,
+            }));
         }
         if self.pages[i].is_none() {
             let mut pages_num = (self.file_len / PAGE_SIZE) as usize;
@@ -61,19 +76,31 @@ impl<P: Page> Pager<P> {
                 self.file.set_position(i as u64 * PAGE_SIZE);
                 let mut buf = [0; PAGE_SIZE as usize];
                 std::io::Read::read(self.file.get_mut(), &mut buf).unwrap();
-                self.pages[i] = Some(P::from(buf));
+                self.pages[i] = Some(PageContainer {
+                    page: P::from(buf),
+                    modified: false,
+                });
             }
         }
         self.pages[i].as_mut().unwrap()
     }
 
     pub fn push(&mut self, page: P) -> usize {
-        self.pages.push(Some(page));
+        self.pages.push(Some(PageContainer {
+            page,
+            modified: true,
+        }));
         self.pages.len() - 1
     }
 
     pub fn swap(&mut self, i: usize, page: P) -> P {
-        self.pages[i].replace(page).unwrap()
+        self.pages[i]
+            .replace(PageContainer {
+                page,
+                modified: true,
+            })
+            .unwrap()
+            .page
     }
 
     pub fn save(&mut self) {
@@ -83,9 +110,13 @@ impl<P: Page> Pager<P> {
     }
 
     pub fn flush(&mut self, i: usize) {
-        if let Some(data) = &self.pages[i] {
-            self.file.set_position(i as u64 * PAGE_SIZE);
-            std::io::Write::write(self.file.get_mut(), data.as_ref()).unwrap();
+        if let Some(container) = &mut self.pages[i] {
+            if container.modified {
+                self.file.set_position(i as u64 * PAGE_SIZE);
+                std::io::Write::write(self.file.get_mut(), container.page.as_ref()).unwrap();
+
+                container.modified = false;
+            }
         }
     }
 }

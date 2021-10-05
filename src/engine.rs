@@ -258,6 +258,12 @@ fn build_excecutable_query_process<S: Storage>(
     (columnss.pop().unwrap(), appender)
 }
 
+impl<S: Storage> Engine<S> {
+    pub fn flush(&self) {
+        self.storage.flush();
+    }
+}
+
 fn select_process_item_column(
     schema: &Schema,
     process_item: &ProcessItem,
