@@ -35,6 +35,7 @@ impl Data {
 pub fn data_vec_from_bytes(types: &[Type], bytes: &[u8]) -> Option<Vec<Data>> {
     let mut i = 0;
     let mut vec = Vec::with_capacity(types.len());
+    // dbg!((&types, &bytes));
     for typ in types {
         match typ {
             Type::U64 => {
@@ -67,6 +68,7 @@ pub fn data_vec_to_bytes(datas: &[Data]) -> Vec<u8> {
             }
         }
     }
+    // dbg!((&datas, &bytes));
     bytes
 }
 

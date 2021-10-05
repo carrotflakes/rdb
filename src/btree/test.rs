@@ -27,7 +27,10 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
     }
 
     fn set_parent(&mut self, _: &(), i: usize) {
-        self.parent = Some(i)
+        self.parent = Some(i);
+    }
+
+    fn set_next(&mut self, _: &(), i: usize) {
     }
 
     fn size(&self, _: &()) -> usize {
@@ -66,7 +69,7 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
         }
     }
 
-    fn insert_node(&mut self, _: &(), key: &usize, node_i: usize) {
+    fn insert_node(&mut self, _: &(), key: &usize, node_i: usize) -> bool {
         if let Ok(children) = &mut self.values {
             for i in 0..self.keys.len() {
                 if &self.keys[i] == key {
@@ -74,7 +77,7 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
                 } else if key < &self.keys[i] {
                     self.keys.insert(i, key.clone());
                     children.insert(i + 1, node_i);
-                    return;
+                    return true;
                 }
             }
             self.keys.push(key.clone());
@@ -82,6 +85,7 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
         } else {
             panic!("b")
         }
+        true
     }
 
     fn get(&self, _: &(), key: &usize) -> Option<V> {

@@ -16,12 +16,14 @@ pub trait BTreeNode<K: Clone + PartialEq + PartialOrd, V: Clone> {
     fn is_leaf(&self, meta: &Self::Meta) -> bool;
     fn get_parent(&self, meta: &Self::Meta) -> Option<usize>;
     fn set_parent(&mut self, meta: &Self::Meta, i: usize);
+    fn set_next(&mut self, meta: &Self::Meta, i: usize);
     // returns number of values (not keys)
     fn size(&self, meta: &Self::Meta) -> usize;
     // expect internal node
     fn is_full(&self, meta: &Self::Meta) -> bool;
     fn insert(&mut self, meta: &Self::Meta, key: &K, value: &V) -> bool;
-    fn insert_node(&mut self, meta: &Self::Meta, key: &K, node_i: usize);
+    fn insert_node(&mut self, meta: &Self::Meta, key: &K, node_i: usize) -> bool;
+    // unused
     fn get(&self, meta: &Self::Meta, key: &K) -> Option<V>;
     fn get_child(&self, meta: &Self::Meta, key: &K) -> usize;
     fn get_first_child(&self, meta: &Self::Meta) -> usize;
@@ -103,22 +105,23 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         key: &K,
         value: &V,
     ) -> Result<(), String> {
-        let node = self.node_mut(node_i);
-        if node.is_leaf(meta) {
-            if node.insert(meta, key, value) {
+        // let node = self.node_mut(node_i);
+        if self.node_ref(node_i).is_leaf(meta) {
+            if self.node_mut(node_i).insert(meta, key, value) {
                 Ok(())
-            } else {
-                let (pivot_key, mut new_node) = node.split_out(meta);
+            } else {                
+                let (pivot_key, mut new_node) = self.node_mut(node_i).split_out(meta);
                 if key < &pivot_key {
-                    node.insert(meta, key, value);
+                    self.node_mut(node_i).insert(meta, key, value);
                 } else {
                     new_node.insert(meta, key, value);
                 }
-                self.insert_node(meta, node_i, &pivot_key, new_node)
-                    .map(|_| ())
+                let next = self.insert_node(meta, node_i, &pivot_key, new_node)?;
+                self.node_mut(node_i).set_next(meta, next); // FIXME ルートノードにset_nextは不要
+                Ok(())
             }
         } else {
-            let node_i = node.get_child(meta, key);
+            let node_i = self.node_ref(node_i).get_child(meta, key);
             debug_assert_ne!(node_i, 0);
             self.insert(meta, node_i, key, value)
         }
@@ -159,7 +162,11 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
             let n = self.swap(node_i, Self::Node::new_internal(meta));
             let i1 = self.push(n);
             let i2 = self.push(node);
-            self.node_mut(i1).set_parent(meta, node_i);
+            {
+                let node_i1 = self.node_mut(i1);
+                node_i1.set_parent(meta, node_i);
+                node_i1.set_next(meta, i2);
+            }
             self.node_mut(i2).set_parent(meta, node_i);
             self.node_mut(node_i)
                 .init_as_root_internal(meta, key, i1, i2);

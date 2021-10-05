@@ -12,7 +12,7 @@ use crate::{
 
 use self::{
     impl_btree::{BTreeCursor, Meta},
-    pager::{PageRaw, Pager},
+    pager::{PageRaw, Pager, PAGE_SIZE},
 };
 
 pub struct File {
@@ -83,7 +83,10 @@ impl Storage for File {
     fn get_cursor_first(&self, source_index: Self::SourceIndex) -> Self::Cursor {
         FileCursor {
             source_index,
-            btree_cursor: self.first_cursor(&self.metas[source_index], self.source_page_indices[source_index]),
+            btree_cursor: self.first_cursor(
+                &self.metas[source_index],
+                self.source_page_indices[source_index],
+            ),
         }
     }
 
@@ -91,7 +94,13 @@ impl Storage for File {
         let key = data_vec_to_bytes(key);
         FileCursor {
             source_index,
-            btree_cursor: self.find(&self.metas[source_index], self.source_page_indices[source_index], &key).unwrap(),
+            btree_cursor: self
+                .find(
+                    &self.metas[source_index],
+                    self.source_page_indices[source_index],
+                    &key,
+                )
+                .unwrap(),
         }
     }
 
@@ -214,6 +223,26 @@ impl std::fmt::Debug for Page {
             write!(f, "{} ", x)?;
         }
         write!(f, "\n")
+    }
+}
+
+impl Page {
+    pub fn new_internal(parent: Option<usize>) -> Self {
+        Page::from([0; PAGE_SIZE as usize])
+    }
+    pub fn new_leaf(parent: Option<usize>) -> Self {
+        let mut page = Page::from([0; PAGE_SIZE as usize]);
+        page[0] = 1;
+        page
+    }
+    pub fn set_parent(&mut self, node_i: usize) {
+        self[1..1 + 4].copy_from_slice(&(node_i as u32).to_le_bytes());
+    }
+    pub fn set_size(&mut self, size: usize) {
+        self[1 + 4..1 + 4 + 2].copy_from_slice(&(size as u16).to_le_bytes());
+    }
+    pub fn set_next(&mut self, node_i: usize) {
+        self[1 + 4 + 2..1 + 4 + 2 + 4].copy_from_slice(&(node_i as u32).to_le_bytes());
     }
 }
 
