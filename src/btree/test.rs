@@ -6,6 +6,7 @@ use super::{BTree, BTreeNode};
 pub struct IBTreeNode<V> {
     parent: Option<usize>,
     keys: Vec<usize>,
+    next: Option<usize>,
     values: Result<Vec<usize>, Vec<V>>,
 }
 
@@ -16,7 +17,6 @@ pub struct IBTree {
 
 impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
     type Meta = ();
-    type Cursor = usize;
 
     fn is_leaf(&self, _: &()) -> bool {
         self.values.is_err()
@@ -30,7 +30,12 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
         self.parent = Some(i);
     }
 
+    fn get_next(&self, _: &()) -> Option<usize> {
+        self.next.clone()
+    }
+
     fn set_next(&mut self, _: &(), i: usize) {
+        self.next = Some(i);
     }
 
     fn size(&self, _: &()) -> usize {
@@ -47,7 +52,7 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
         }
     }
 
-    fn insert(&mut self, meta: &(), key: &usize, value: &V) -> bool {
+    fn insert_value(&mut self, meta: &(), key: &usize, value: &V) -> bool {
         if self.is_full(meta) {
             return false;
         }
@@ -86,18 +91,6 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
             panic!("b")
         }
         true
-    }
-
-    fn get(&self, _: &(), key: &usize) -> Option<V> {
-        if let Some(i) = self.keys.iter().position(|k| k == key) {
-            if let Err(values) = &self.values {
-                Some(values[i].to_owned())
-            } else {
-                panic!("ook");
-            }
-        } else {
-            None
-        }
     }
 
     fn get_child(&self, _: &(), key: &usize) -> usize {
@@ -152,6 +145,7 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
                     IBTreeNode {
                         parent: None,
                         keys: self.keys.drain(1..).skip(1).collect(),
+                        next: None,
                         values: Ok(vs.drain(2..).collect()),
                     },
                 )
@@ -163,6 +157,7 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
                     IBTreeNode {
                         parent: None,
                         keys: self.keys.drain(2..).collect(),
+                        next: None,
                         values: Err(vs.drain(2..).collect()),
                     },
                 )
@@ -174,6 +169,7 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
         IBTreeNode {
             parent: None,
             keys: vec![],
+            next: None,
             values: Ok(vec![]),
         }
     }
@@ -183,11 +179,11 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
         self.values = Ok(vec![i1, i2]);
     }
 
-    fn first_cursor(&self, meta: &Self::Meta) -> Self::Cursor {
+    fn first_cursor(&self, meta: &Self::Meta) -> usize {
         0
     }
 
-    fn find(&self, meta: &Self::Meta, key: &usize) -> Option<Self::Cursor> {
+    fn find(&self, meta: &Self::Meta, key: &usize) -> Option<usize> {
         if let Some(i) = self.keys.iter().position(|k| k >= key) {
             if self.values.is_err() {
                 Some(i)
@@ -199,20 +195,12 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
         }
     }
 
-    fn cursor_get(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> Option<(usize, V)> {
+    fn cursor_get(&self, meta: &Self::Meta, cursor: usize) -> Option<(usize, V)> {
         if let Err(values) = &self.values {
-            Some((self.keys[*cursor].clone(), values[*cursor].clone()))
+            Some((self.keys[cursor].clone(), values[cursor].clone()))
         } else {
             panic!("ook");
         }
-    }
-
-    fn cursor_next(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> (usize, Self::Cursor) {
-        todo!()
-    }
-
-    fn cursor_is_end(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> bool {
-        todo!()
     }
 }
 
@@ -223,6 +211,7 @@ impl BTree<usize, String> for IBTree {
         self.pages.push(IBTreeNode {
             parent: None,
             keys: vec![],
+            next: None,
             values: Err(vec![]),
         });
         self.pages.len() - 1
@@ -247,12 +236,27 @@ impl BTree<usize, String> for IBTree {
     }
 }
 
+impl<V: Clone> IBTreeNode<V> {
+    fn get(&self, _: &(), key: &usize) -> Option<V> {
+        if let Some(i) = self.keys.iter().position(|k| k == key) {
+            if let Err(values) = &self.values {
+                Some(values[i].to_owned())
+            } else {
+                panic!("ook");
+            }
+        } else {
+            None
+        }
+    }
+}
+
 impl IBTree {
     pub fn new() -> Self {
         IBTree {
             pages: vec![IBTreeNode {
                 parent: None,
                 keys: vec![],
+                next: None,
                 values: Err(vec![]),
             }],
         }
@@ -275,6 +279,21 @@ impl IBTree {
                 println!("{}{}", &indent, page.keys[i]);
             }
             self.show_node(*page.values.as_ref().ok().unwrap().last().unwrap(), indent);
+        }
+    }
+
+    fn find_one(
+        &self,
+        meta: &<<IBTree as BTree<usize, String>>::Node as BTreeNode<usize, String>>::Meta,
+        node_i: usize,
+        key: &usize,
+    ) -> Option<String> {
+        let node = self.node_ref(node_i);
+        if node.is_leaf(meta) {
+            node.get(meta, key)
+        } else {
+            let node_i = node.get_child(meta, key);
+            self.find_one(meta, node_i, key)
         }
     }
 }

@@ -1,5 +1,18 @@
 # Carrot flavored relational database
 
+## TODO
+- [ ] alter table
+- [ ] auto increment
+- [ ] explain
+- [ ] jarnal log
+- [ ] index
+- [ ] unit tests
+- [ ] integration tests
+- [ ] benchmark
+- [ ] tcp connection
+- [ ] CLI
+- [ ] SQL
+
 ``` yaml
 schema:
   tables:

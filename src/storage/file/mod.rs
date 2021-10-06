@@ -4,14 +4,14 @@ mod pager;
 use std::borrow::Borrow;
 
 use crate::{
-    btree::BTree,
+    btree::{BTree, BTreeCursor},
     data::{data_vec_from_bytes, data_vec_to_bytes, Data, Type},
     schema::Schema,
     storage::Storage,
 };
 
 use self::{
-    impl_btree::{BTreeCursor, Meta},
+    impl_btree::Meta,
     pager::{PageRaw, Pager, PAGE_SIZE},
 };
 
@@ -172,7 +172,9 @@ impl File {
         let mut pager = Pager::<Page>::open(filepath);
         if pager.size() == 0 {
             // initialize
-            pager.get_ref(0);
+            pager.get_mut(0);
+            // TODO write file header
+            // 0x1006 <storage format>
             Self {
                 pager,
                 schema: Schema::new_empty(),
@@ -249,6 +251,18 @@ impl Page {
     }
     pub fn set_next(&mut self, node_i: usize) {
         self[1 + 4 + 2..1 + 4 + 2 + 4].copy_from_slice(&(node_i as u32).to_le_bytes());
+    }
+    #[inline]
+    pub fn slice(&self, offset: usize, size: usize) -> &[u8] {
+        &self[offset..offset + size]
+    }
+    #[inline]
+    pub fn slice_mut(&self, offset: usize, size: usize) -> &[u8] {
+        &self[offset..offset + size]
+    }
+    #[inline]
+    pub fn write(&mut self, offset: usize, bytes: &[u8]) {
+        self[offset..offset + bytes.len()].copy_from_slice(bytes);
     }
 }
 

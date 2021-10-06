@@ -10,8 +10,6 @@ const INDEX_SIZE: usize = 2;
 pub type Key = Vec<u8>;
 pub type Value = Vec<u8>;
 
-pub type BTreeCursor = crate::btree::BTreeCursor<Key, Value, File>;
-
 // # internal node layout
 // [1] leaf flag // TODO なくしたい
 // [4] parent node id
@@ -60,7 +58,6 @@ pub struct Meta {
 
 impl BTreeNode<Key, Value> for Page {
     type Meta = Meta;
-    type Cursor = usize; // = key index
 
     fn is_leaf(&self, _: &Self::Meta) -> bool {
         self[0] == 1
@@ -77,6 +74,15 @@ impl BTreeNode<Key, Value> for Page {
 
     fn set_parent(&mut self, _: &Self::Meta, i: usize) {
         self.set_parent(i);
+    }
+
+    fn get_next(&self, _: &Self::Meta) -> Option<usize> {
+        let i = parse_u32(&self[1 + 4 + 2..1 + 4 + 2 + 4]) as usize;
+        if i == 0 {
+            None
+        } else {
+            Some(i)
+        }
     }
 
     fn set_next(&mut self, _: &Self::Meta, i: usize) {
@@ -101,7 +107,7 @@ impl BTreeNode<Key, Value> for Page {
         }
     }
 
-    fn insert(&mut self, meta: &Self::Meta, key: &Key, value: &Value) -> bool {
+    fn insert_value(&mut self, meta: &Self::Meta, key: &Key, value: &Value) -> bool {
         let size = self.size(meta);
         let res = match meta {
             Meta {
@@ -308,10 +314,6 @@ impl BTreeNode<Key, Value> for Page {
             self.set_size(size + 1);
         }
         res
-    }
-
-    fn get(&self, _: &Self::Meta, _: &Key) -> Option<Value> {
-        todo!()
     }
 
     fn get_child(&self, meta: &Self::Meta, key: &Key) -> usize {
@@ -523,11 +525,11 @@ impl BTreeNode<Key, Value> for Page {
         }
     }
 
-    fn first_cursor(&self, _: &Self::Meta) -> Self::Cursor {
+    fn first_cursor(&self, _: &Self::Meta) -> usize {
         0
     }
 
-    fn find(&self, meta: &Self::Meta, key: &Key) -> Option<Self::Cursor> {
+    fn find(&self, meta: &Self::Meta, key: &Key) -> Option<usize> {
         let size = self.size(meta);
         match meta {
             Meta {
@@ -575,7 +577,7 @@ impl BTreeNode<Key, Value> for Page {
         }
     }
 
-    fn cursor_get(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> Option<(Key, Value)> {
+    fn cursor_get(&self, meta: &Self::Meta, cursor: usize) -> Option<(Key, Value)> {
         let size = self.size(meta);
         match meta {
             Meta {
@@ -600,7 +602,7 @@ impl BTreeNode<Key, Value> for Page {
                 let value_index_index = HEADER_SIZE + key_interval * cursor + key_size;
                 let value_start =
                     parse_u16(&self[value_index_index..value_index_index + INDEX_SIZE]) as usize;
-                let value_end = if *cursor == 0 {
+                let value_end = if cursor == 0 {
                     PAGE_SIZE as usize
                 } else {
                     let value_index_index = HEADER_SIZE + key_interval * (cursor - 1) + key_size;
@@ -620,21 +622,6 @@ impl BTreeNode<Key, Value> for Page {
                 key_size: None,
                 value_size: None,
             } => todo!(),
-        }
-    }
-
-    fn cursor_next(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> (usize, Self::Cursor) {
-        if self.size(meta) <= cursor + 1 {
-            (parse_u32(&self[1 + 4 + 2..1 + 4 + 2 + 4]) as usize, 0)
-        } else {
-            (usize::MAX, cursor + 1)
-        }
-    }
-
-    fn cursor_is_end(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> bool {
-        self.size(meta) <= *cursor && {
-            let next = parse_u32(&self[1 + 4 + 2..1 + 4 + 2 + 4]);
-            next == 0
         }
     }
 }
@@ -673,10 +660,10 @@ impl BTree<Key, Value> for File {
     }
 }
 
-pub fn parse_u16(bytes: &[u8]) -> u16 {
+fn parse_u16(bytes: &[u8]) -> u16 {
     u16::from_le_bytes(bytes.try_into().unwrap())
 }
 
-pub fn parse_u32(bytes: &[u8]) -> u32 {
+fn parse_u32(bytes: &[u8]) -> u32 {
     u32::from_le_bytes(bytes.try_into().unwrap())
 }

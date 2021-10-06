@@ -1,30 +1,25 @@
 mod test;
 
-pub type BTreeCursor<K, V, B> =
-    BTreeCursorInner<<<B as BTree<K, V>>::Node as BTreeNode<K, V>>::Cursor>;
-
 #[derive(Debug)]
-pub struct BTreeCursorInner<NodeCursor: Clone> {
+pub struct BTreeCursor {
     node_i: usize,
-    cursor: NodeCursor,
+    value_i: usize,
 }
 
 pub trait BTreeNode<K: Clone + PartialEq + PartialOrd, V: Clone> {
     type Meta;
-    type Cursor: Clone;
 
     fn is_leaf(&self, meta: &Self::Meta) -> bool;
     fn get_parent(&self, meta: &Self::Meta) -> Option<usize>;
     fn set_parent(&mut self, meta: &Self::Meta, i: usize);
+    fn get_next(&self, meta: &Self::Meta) -> Option<usize>;
     fn set_next(&mut self, meta: &Self::Meta, i: usize);
     // returns number of values (not keys)
     fn size(&self, meta: &Self::Meta) -> usize;
     // expect internal node
     fn is_full(&self, meta: &Self::Meta) -> bool;
-    fn insert(&mut self, meta: &Self::Meta, key: &K, value: &V) -> bool;
+    fn insert_value(&mut self, meta: &Self::Meta, key: &K, value: &V) -> bool;
     fn insert_node(&mut self, meta: &Self::Meta, key: &K, node_i: usize) -> bool;
-    // unused
-    fn get(&self, meta: &Self::Meta, key: &K) -> Option<V>;
     fn get_child(&self, meta: &Self::Meta, key: &K) -> usize;
     fn get_first_child(&self, meta: &Self::Meta) -> usize;
     fn get_children(&self, meta: &Self::Meta) -> Vec<usize>;
@@ -33,11 +28,9 @@ pub trait BTreeNode<K: Clone + PartialEq + PartialOrd, V: Clone> {
     fn new_internal(meta: &Self::Meta) -> Self;
     fn init_as_root_internal(&mut self, meta: &Self::Meta, key: &K, i1: usize, i2: usize);
 
-    fn first_cursor(&self, meta: &Self::Meta) -> Self::Cursor;
-    fn find(&self, meta: &Self::Meta, key: &K) -> Option<Self::Cursor>;
-    fn cursor_get(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> Option<(K, V)>;
-    fn cursor_next(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> (usize, Self::Cursor);
-    fn cursor_is_end(&self, meta: &Self::Meta, cursor: &Self::Cursor) -> bool;
+    fn first_cursor(&self, meta: &Self::Meta) -> usize;
+    fn find(&self, meta: &Self::Meta, key: &K) -> Option<usize>;
+    fn cursor_get(&self, meta: &Self::Meta, cursor: usize) -> Option<(K, V)>;
 }
 
 pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
@@ -53,30 +46,15 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         &self,
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
         node_i: usize,
-    ) -> BTreeCursorInner<<Self::Node as BTreeNode<K, V>>::Cursor> {
+    ) -> BTreeCursor {
         let node = self.node_ref(node_i);
         if node.is_leaf(meta) {
-            BTreeCursorInner {
+            BTreeCursor {
                 node_i,
-                cursor: node.first_cursor(meta),
+                value_i: node.first_cursor(meta),
             }
         } else {
             self.first_cursor(meta, node.get_first_child(meta))
-        }
-    }
-
-    fn find_one(
-        &self,
-        meta: &<Self::Node as BTreeNode<K, V>>::Meta,
-        node_i: usize,
-        key: &K,
-    ) -> Option<V> {
-        let node = self.node_ref(node_i);
-        if node.is_leaf(meta) {
-            node.get(meta, key)
-        } else {
-            let node_i = node.get_child(meta, key);
-            self.find_one(meta, node_i, key)
         }
     }
 
@@ -85,12 +63,12 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
         node_i: usize,
         key: &K,
-    ) -> Option<BTreeCursorInner<<Self::Node as BTreeNode<K, V>>::Cursor>> {
+    ) -> Option<BTreeCursor> {
         let node = self.node_ref(node_i);
         if node.is_leaf(meta) {
-            Some(BTreeCursorInner {
+            Some(BTreeCursor {
                 node_i,
-                cursor: node.find(meta, key)?,
+                value_i: node.find(meta, key)?,
             })
         } else {
             let node_i = node.get_child(meta, key);
@@ -107,14 +85,14 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
     ) -> Result<(), String> {
         // let node = self.node_mut(node_i);
         if self.node_ref(node_i).is_leaf(meta) {
-            if self.node_mut(node_i).insert(meta, key, value) {
+            if self.node_mut(node_i).insert_value(meta, key, value) {
                 Ok(())
-            } else {                
+            } else {
                 let (pivot_key, mut new_node) = self.node_mut(node_i).split_out(meta);
                 if key < &pivot_key {
-                    self.node_mut(node_i).insert(meta, key, value);
+                    self.node_mut(node_i).insert_value(meta, key, value);
                 } else {
-                    new_node.insert(meta, key, value);
+                    new_node.insert_value(meta, key, value);
                 }
                 let next = self.insert_node(meta, node_i, &pivot_key, new_node)?;
                 self.node_mut(node_i).set_next(meta, next); // FIXME ルートノードにset_nextは不要
@@ -201,39 +179,36 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
     fn cursor_get(
         &self,
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
-        cursor: &BTreeCursor<K, V, Self>,
+        cursor: &BTreeCursor,
     ) -> Option<(K, V)> {
         self.node_ref(cursor.node_i)
-            .cursor_get(meta, &cursor.cursor)
+            .cursor_get(meta, cursor.value_i)
     }
 
     fn cursor_next(
         &self,
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
-        cursor: &BTreeCursor<K, V, Self>,
-    ) -> BTreeCursor<K, V, Self> {
-        //????
-        let (next_node_i, c) = self
-            .node_ref(cursor.node_i)
-            .cursor_next(meta, &cursor.cursor);
-        BTreeCursorInner {
-            node_i: if next_node_i == usize::MAX {
-                cursor.node_i
-            } else {
-                next_node_i
-            },
-            cursor: c,
+        cursor: &BTreeCursor,
+    ) -> BTreeCursor {
+        let node = self.node_ref(cursor.node_i);
+        if cursor.value_i + 1 < node.size(meta) {
+            BTreeCursor {
+                node_i: cursor.node_i,
+                value_i: cursor.value_i + 1,
+            }
+        } else {
+            BTreeCursor {
+                node_i: node.get_next(meta).unwrap_or(0),
+                value_i: 0, // ?
+            }
         }
     }
 
     fn cursor_is_end(
         &self,
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
-        cursor: &BTreeCursor<K, V, Self>,
+        cursor: &BTreeCursor,
     ) -> bool {
-        cursor.node_i == 0
-            || self
-                .node_ref(cursor.node_i)
-                .cursor_is_end(meta, &cursor.cursor)
+        cursor.node_i == 0 || self.node_ref(cursor.node_i).size(meta) <= cursor.value_i
     }
 }
