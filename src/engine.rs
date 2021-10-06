@@ -45,6 +45,50 @@ impl<S: Storage> Engine<S> {
         }
     }
 
+    pub fn execute_delete(&mut self, delete: &query::Delete) -> Result<(), String> {
+        let table = if let Some((_, table)) = self.schema().get_table(&delete.source.table_name) {
+            table
+        } else {
+            return Err(format!("missing table"));
+        };
+        let source = self
+            .storage
+            .source_index(&delete.source.table_name, &delete.source.keys)
+            .unwrap();
+        let mut cursor = if let Some(from) = &delete.source.from {
+            self.storage.get_cursor_just(source, from)
+        } else {
+            self.storage.get_cursor_first(source)
+        };
+        let end_check_columns = delete.source.to.as_ref().map(|to| {
+            (
+                delete
+                    .source
+                    .keys
+                    .iter()
+                    .map(|name| table.get_column(name).unwrap().0)
+                    .collect::<Vec<_>>(),
+                to.clone(),
+            )
+        });
+        while !self.storage.cursor_is_end(&cursor) {
+            if let Some(row) = self.storage.cursor_get_row(&cursor) {
+                if let Some((cs, to)) = &end_check_columns {
+                    let now = cs.iter().map(|i| row[*i].clone()).collect::<Vec<_>>();
+                    if to < &now {
+                        break;
+                    }
+                }
+                // todo: filter here
+                self.storage.cursor_delete(&mut cursor);
+                // self.storage.cursor_advance(&mut cursor);
+            } else {
+                break;
+            }
+        }
+        Ok(())
+    }
+
     fn execute_insert_row(
         &mut self,
         table_name: &String,

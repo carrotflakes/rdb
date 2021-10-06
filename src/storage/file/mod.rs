@@ -42,7 +42,8 @@ impl Storage for File {
         let page = &mut self.pager.get_mut(0)[..];
         dbg!(bincode::serialize_into(page, &self.schema)).unwrap(); // todo: over size
 
-        let page_index = self.add_root_node();
+        let page_index = self.pager.add_root_node();
+        self.pager.ensure_page(page_index); // FIXME
         self.source_page_indices.push(page_index); // ??
         self.key_types
             .push(if let Some(primary_key) = table.primary_key {
@@ -83,7 +84,7 @@ impl Storage for File {
     fn get_cursor_first(&self, source_index: Self::SourceIndex) -> Self::Cursor {
         FileCursor {
             source_index,
-            btree_cursor: self.first_cursor(
+            btree_cursor: self.pager.first_cursor(
                 &self.metas[source_index],
                 self.source_page_indices[source_index],
             ),
@@ -95,6 +96,7 @@ impl Storage for File {
         FileCursor {
             source_index,
             btree_cursor: self
+                .pager
                 .find(
                     &self.metas[source_index],
                     self.source_page_indices[source_index],
@@ -105,26 +107,34 @@ impl Storage for File {
     }
 
     fn cursor_get_row(&self, cursor: &Self::Cursor) -> Option<Vec<Data>> {
-        self.cursor_get(&self.metas[cursor.source_index], &cursor.btree_cursor)
+        self.pager
+            .cursor_get(&self.metas[cursor.source_index], &cursor.btree_cursor)
             .map(|x| data_vec_from_bytes(&self.value_types[cursor.source_index], &x.1).unwrap())
     }
 
     fn cursor_advance(&self, cursor: &mut Self::Cursor) -> bool {
-        let c = self.cursor_next(&self.metas[cursor.source_index], &cursor.btree_cursor);
+        let c = self
+            .pager
+            .cursor_next(&self.metas[cursor.source_index], &cursor.btree_cursor);
         cursor.btree_cursor = c;
         true
     }
 
     fn cursor_is_end(&self, cursor: &Self::Cursor) -> bool {
-        <Self as BTree<Vec<u8>, Vec<u8>>>::cursor_is_end(
-            &self,
-            &self.metas[cursor.source_index],
-            &cursor.btree_cursor,
-        )
+        self.pager
+            .cursor_is_end(&self.metas[cursor.source_index], &cursor.btree_cursor)
     }
 
-    fn cursor_delete(&self, cursor: &mut Self::Cursor) -> bool {
-        todo!()
+    fn cursor_delete(&mut self, cursor: &mut Self::Cursor) -> bool {
+        if let Some(btree_cursor) = self
+            .pager
+            .cursor_delete(&self.metas[cursor.source_index], &cursor.btree_cursor)
+        {
+            cursor.btree_cursor = btree_cursor;
+            true
+        } else {
+            false
+        }
     }
 
     fn cursor_update(&self, cursor: &mut Self::Cursor, data: Vec<Data>) -> bool {
@@ -156,7 +166,7 @@ impl Storage for File {
         };
         let key = data_vec_to_bytes(&key);
         let value = data_vec_to_bytes(&data);
-        let r = self.insert(&meta, node_i, &key, &value);
+        let r = self.pager.insert(&meta, node_i, &key, &value);
         r
     }
 
@@ -257,8 +267,8 @@ impl Page {
         &self[offset..offset + size]
     }
     #[inline]
-    pub fn slice_mut(&self, offset: usize, size: usize) -> &[u8] {
-        &self[offset..offset + size]
+    pub fn slice_mut(&mut self, offset: usize, size: usize) -> &mut [u8] {
+        &mut self[offset..offset + size]
     }
     #[inline]
     pub fn write(&mut self, offset: usize, bytes: &[u8]) {

@@ -22,7 +22,7 @@ pub trait Storage: 'static {
     fn cursor_get_row(&self, cursor: &Self::Cursor) -> Option<Vec<Data>>;
     fn cursor_advance(&self, cursor: &mut Self::Cursor) -> bool;
     fn cursor_is_end(&self, cursor: &Self::Cursor) -> bool;
-    fn cursor_delete(&self, cursor: &mut Self::Cursor) -> bool;
+    fn cursor_delete(&mut self, cursor: &mut Self::Cursor) -> bool;
     fn cursor_update(&self, cursor: &mut Self::Cursor, data: Vec<Data>) -> bool;
 
     fn add_row(&mut self, table_name: &str, data: Vec<Data>) -> Result<(), String>;

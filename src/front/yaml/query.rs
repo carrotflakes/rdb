@@ -1,6 +1,6 @@
 use crate::{
     front::yaml::{query::mapping::ProcessSelectColumn, string_to_data},
-    query::{Expr, Insert, ProcessItem, Select, SelectSource},
+    query::{Delete, Expr, Insert, ProcessItem, Select, SelectSource},
 };
 
 pub fn parse_select_from_yaml(src: &str) -> Result<Select, serde_yaml::Error> {
@@ -11,36 +11,7 @@ pub fn parse_select_from_yaml(src: &str) -> Result<Select, serde_yaml::Error> {
 pub fn map_select(select: mapping::Select) -> Select {
     Select {
         sub_queries: vec![],
-        source: match select.source.iterate {
-            mapping::SelectSourceIterate {
-                over,
-                from,
-                to,
-                just: None,
-            } => SelectSource {
-                table_name: select.source.table,
-                keys: over,
-                from: from.map(|x| x.into_iter().map(string_to_data).collect()),
-                to: to.map(|x| x.into_iter().map(string_to_data).collect()),
-            },
-            mapping::SelectSourceIterate {
-                over,
-                from: None,
-                to: None,
-                just: Some(just),
-            } => {
-                let just = Some(just.into_iter().map(string_to_data).collect());
-                SelectSource {
-                    table_name: select.source.table,
-                    keys: over,
-                    from: just.clone(),
-                    to: just,
-                }
-            }
-            _ => {
-                panic!("unexpected iterate")
-            }
-        },
+        source: map_select_source(select.source),
         process: select
             .process
             .into_iter()
@@ -92,6 +63,39 @@ pub fn map_select(select: mapping::Select) -> Select {
     }
 }
 
+pub fn map_select_source(source: mapping::SelectSource) -> SelectSource {
+    match source.iterate {
+        mapping::SelectSourceIterate {
+            over,
+            from,
+            to,
+            just: None,
+        } => SelectSource {
+            table_name: source.table,
+            keys: over,
+            from: from.map(|x| x.into_iter().map(string_to_data).collect()),
+            to: to.map(|x| x.into_iter().map(string_to_data).collect()),
+        },
+        mapping::SelectSourceIterate {
+            over,
+            from: None,
+            to: None,
+            just: Some(just),
+        } => {
+            let just = Some(just.into_iter().map(string_to_data).collect());
+            SelectSource {
+                table_name: source.table,
+                keys: over,
+                from: just.clone(),
+                to: just,
+            }
+        }
+        _ => {
+            panic!("unexpected iterate")
+        }
+    }
+}
+
 pub fn parse_insert_from_yaml(src: &str) -> Result<Insert, serde_yaml::Error> {
     let insert: mapping::Insert = serde_yaml::from_str(src)?;
     match insert {
@@ -118,6 +122,14 @@ pub fn parse_insert_from_yaml(src: &str) -> Result<Insert, serde_yaml::Error> {
         }),
         _ => panic!("row or select"),
     }
+}
+
+pub fn parse_delete_from_yaml(src: &str) -> Result<Delete, serde_yaml::Error> {
+    let delete: mapping::Delete = serde_yaml::from_str(src)?;
+    Ok(Delete {
+        source: map_select_source(delete.source),
+        filter: vec![],
+    })
 }
 
 mod mapping {
@@ -188,5 +200,11 @@ mod mapping {
         pub table: String,
         pub row: Option<HashMap<String, String>>,
         pub select: Option<Select>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub struct Delete {
+        pub source: SelectSource,
     }
 }

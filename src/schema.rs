@@ -86,6 +86,8 @@ impl Schema {
         }
         None
     }
+
+    // add column, remove column, update column
 }
 
 impl Table {

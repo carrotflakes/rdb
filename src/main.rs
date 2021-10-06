@@ -4,11 +4,11 @@ use rdb::{
     front::{
         print_table,
         yaml::{
-            query::{parse_insert_from_yaml, parse_select_from_yaml},
+            query::{parse_delete_from_yaml, parse_insert_from_yaml, parse_select_from_yaml},
             schema::parse_table_from_yaml,
         },
     },
-    query::{Expr, Insert, ProcessItem, Select, SelectSource},
+    query::{Delete, Expr, Insert, ProcessItem, Select, SelectSource},
     schema,
     storage::Storage,
 };
@@ -238,8 +238,29 @@ select:
     print_table(&cs, &vs);
 
     engine.flush();
-}
 
+    engine
+        .execute_delete(
+            &parse_delete_from_yaml(
+                r"
+source:
+    table: message
+    iterate:
+        over:
+        -   id
+        from:
+        -   5
+",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+    let (cs, vs) = engine.execute_select(&query).unwrap();
+    print_table(&cs, &vs);
+
+    engine.flush();
+}
 
 #[test]
 fn bintest() {

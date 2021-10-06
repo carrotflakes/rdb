@@ -126,7 +126,7 @@ impl Storage for InMemory {
         cursor.index * table.key_columns.len() >= table.keys.len()
     }
 
-    fn cursor_delete(&self, cursor: &mut Self::Cursor) -> bool {
+    fn cursor_delete(&mut self, cursor: &mut Self::Cursor) -> bool {
         todo!()
     }
 

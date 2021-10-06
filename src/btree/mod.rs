@@ -1,6 +1,6 @@
 mod test;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BTreeCursor {
     node_i: usize,
     value_i: usize,
@@ -12,25 +12,28 @@ pub trait BTreeNode<K: Clone + PartialEq + PartialOrd, V: Clone> {
     fn is_leaf(&self, meta: &Self::Meta) -> bool;
     fn get_parent(&self, meta: &Self::Meta) -> Option<usize>;
     fn set_parent(&mut self, meta: &Self::Meta, i: usize);
-    fn get_next(&self, meta: &Self::Meta) -> Option<usize>;
-    fn set_next(&mut self, meta: &Self::Meta, i: usize);
     // returns number of values (not keys)
     fn size(&self, meta: &Self::Meta) -> usize;
+    fn split_out(&mut self, meta: &Self::Meta) -> (K, Self);
+
     // expect internal node
     fn is_full(&self, meta: &Self::Meta) -> bool;
-    fn insert_value(&mut self, meta: &Self::Meta, key: &K, value: &V) -> bool;
     fn insert_node(&mut self, meta: &Self::Meta, key: &K, node_i: usize) -> bool;
     fn get_child(&self, meta: &Self::Meta, key: &K) -> usize;
     fn get_first_child(&self, meta: &Self::Meta) -> usize;
     fn get_children(&self, meta: &Self::Meta) -> Vec<usize>;
-    fn remove(&mut self, meta: &Self::Meta, key: &K) -> bool;
-    fn split_out(&mut self, meta: &Self::Meta) -> (K, Self);
     fn new_internal(meta: &Self::Meta) -> Self;
     fn init_as_root_internal(&mut self, meta: &Self::Meta, key: &K, i1: usize, i2: usize);
+
+    fn insert_value(&mut self, meta: &Self::Meta, key: &K, value: &V) -> bool;
+    fn remove(&mut self, meta: &Self::Meta, key: &K) -> bool;
+    fn get_next(&self, meta: &Self::Meta) -> Option<usize>;
+    fn set_next(&mut self, meta: &Self::Meta, i: usize);
 
     fn first_cursor(&self, meta: &Self::Meta) -> usize;
     fn find(&self, meta: &Self::Meta, key: &K) -> Option<usize>;
     fn cursor_get(&self, meta: &Self::Meta, cursor: usize) -> Option<(K, V)>;
+    fn cursor_delete(&mut self, meta: &Self::Meta, cursor: usize) -> bool;
 }
 
 pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
@@ -185,23 +188,44 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
             .cursor_get(meta, cursor.value_i)
     }
 
+    fn cursor_delete(
+        &mut self,
+        meta: &<Self::Node as BTreeNode<K, V>>::Meta,
+        cursor: &BTreeCursor,
+    ) -> Option<BTreeCursor> {
+        let node = self.node_mut(cursor.node_i);
+        if !node.cursor_delete(meta, cursor.value_i) {
+            return None;
+        }
+        Some(if node.size(meta) <= cursor.value_i {
+            self.cursor_next(meta, cursor)
+        } else {
+            cursor.clone()
+        })
+    }
+
     fn cursor_next(
         &self,
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
         cursor: &BTreeCursor,
     ) -> BTreeCursor {
-        let node = self.node_ref(cursor.node_i);
-        if cursor.value_i + 1 < node.size(meta) {
-            BTreeCursor {
-                node_i: cursor.node_i,
-                value_i: cursor.value_i + 1,
+        let BTreeCursor {
+            mut node_i,
+            mut value_i,
+        } = cursor.clone();
+        let mut node = self.node_ref(node_i);
+        value_i += 1;
+        while node.size(meta) <= value_i {
+            value_i = 0;
+            if let Some(next_node_i) = node.get_next(meta) {
+                node_i = next_node_i;
+            } else {
+                node_i = 0;
+                break;
             }
-        } else {
-            BTreeCursor {
-                node_i: node.get_next(meta).unwrap_or(0),
-                value_i: 0, // ?
-            }
+            node = self.node_ref(node_i);
         }
+        BTreeCursor { node_i, value_i }
     }
 
     fn cursor_is_end(

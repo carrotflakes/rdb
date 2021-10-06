@@ -45,6 +45,12 @@ pub enum ProcessItem {
 }
 
 #[derive(Debug, Clone)]
+pub struct Filter {
+    left_key: String,
+    right_key: String, // todo
+}
+
+#[derive(Debug, Clone)]
 pub enum Expr {
     Column(String),
     Data(Data),
@@ -72,9 +78,8 @@ pub enum Insert {
 
 #[derive(Debug, Clone)]
 pub struct Delete {
-    pub table_name: String,
     pub source: SelectSource,
-    // TODO: filter
+    pub filter: Vec<Filter>,
 }
 
 #[derive(Debug, Clone)]

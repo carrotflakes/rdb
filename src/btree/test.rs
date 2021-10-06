@@ -30,14 +30,6 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
         self.parent = Some(i);
     }
 
-    fn get_next(&self, _: &()) -> Option<usize> {
-        self.next.clone()
-    }
-
-    fn set_next(&mut self, _: &(), i: usize) {
-        self.next = Some(i);
-    }
-
     fn size(&self, _: &()) -> usize {
         match &self.values {
             Ok(x) => x.len(),
@@ -45,32 +37,39 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
         }
     }
 
+    fn split_out(&mut self, _: &()) -> (usize, Self) {
+        match &mut self.values {
+            Ok(vs) => {
+                let pivot = self.keys[1];
+                (
+                    pivot,
+                    IBTreeNode {
+                        parent: None,
+                        keys: self.keys.drain(1..).skip(1).collect(),
+                        next: None,
+                        values: Ok(vs.drain(2..).collect()),
+                    },
+                )
+            }
+            Err(vs) => {
+                let pivot = self.keys[2];
+                (
+                    pivot,
+                    IBTreeNode {
+                        parent: None,
+                        keys: self.keys.drain(2..).collect(),
+                        next: None,
+                        values: Err(vs.drain(2..).collect()),
+                    },
+                )
+            }
+        }
+    }
+
     fn is_full(&self, _: &()) -> bool {
         match &self.values {
             Ok(x) => x.len() == 4,
             Err(x) => x.len() == 3,
-        }
-    }
-
-    fn insert_value(&mut self, meta: &(), key: &usize, value: &V) -> bool {
-        if self.is_full(meta) {
-            return false;
-        }
-        if let Err(values) = &mut self.values {
-            for i in 0..self.keys.len() {
-                if &self.keys[i] == key {
-                    panic!("dup");
-                } else if key < &self.keys[i] {
-                    self.keys.insert(i, key.clone());
-                    values.insert(i, value.clone());
-                    return true;
-                }
-            }
-            self.keys.push(key.clone());
-            values.push(value.clone());
-            true
-        } else {
-            panic!("a")
         }
     }
 
@@ -122,6 +121,42 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
         }
     }
 
+    fn new_internal(_: &()) -> Self {
+        IBTreeNode {
+            parent: None,
+            keys: vec![],
+            next: None,
+            values: Ok(vec![]),
+        }
+    }
+
+    fn init_as_root_internal(&mut self, _: &(), key: &usize, i1: usize, i2: usize) {
+        self.keys = vec![key.clone()];
+        self.values = Ok(vec![i1, i2]);
+    }
+
+    fn insert_value(&mut self, meta: &(), key: &usize, value: &V) -> bool {
+        if self.is_full(meta) {
+            return false;
+        }
+        if let Err(values) = &mut self.values {
+            for i in 0..self.keys.len() {
+                if &self.keys[i] == key {
+                    panic!("dup");
+                } else if key < &self.keys[i] {
+                    self.keys.insert(i, key.clone());
+                    values.insert(i, value.clone());
+                    return true;
+                }
+            }
+            self.keys.push(key.clone());
+            values.push(value.clone());
+            true
+        } else {
+            panic!("a")
+        }
+    }
+
     fn remove(&mut self, _: &(), key: &usize) -> bool {
         if let Some(i) = self.keys.iter().position(|k| k == key) {
             if let Err(values) = &mut self.values {
@@ -136,47 +171,12 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
         }
     }
 
-    fn split_out(&mut self, _: &()) -> (usize, Self) {
-        match &mut self.values {
-            Ok(vs) => {
-                let pivot = self.keys[1];
-                (
-                    pivot,
-                    IBTreeNode {
-                        parent: None,
-                        keys: self.keys.drain(1..).skip(1).collect(),
-                        next: None,
-                        values: Ok(vs.drain(2..).collect()),
-                    },
-                )
-            }
-            Err(vs) => {
-                let pivot = self.keys[2];
-                (
-                    pivot,
-                    IBTreeNode {
-                        parent: None,
-                        keys: self.keys.drain(2..).collect(),
-                        next: None,
-                        values: Err(vs.drain(2..).collect()),
-                    },
-                )
-            }
-        }
+    fn get_next(&self, _: &()) -> Option<usize> {
+        self.next.clone()
     }
 
-    fn new_internal(_: &()) -> Self {
-        IBTreeNode {
-            parent: None,
-            keys: vec![],
-            next: None,
-            values: Ok(vec![]),
-        }
-    }
-
-    fn init_as_root_internal(&mut self, _: &(), key: &usize, i1: usize, i2: usize) {
-        self.keys = vec![key.clone()];
-        self.values = Ok(vec![i1, i2]);
+    fn set_next(&mut self, _: &(), i: usize) {
+        self.next = Some(i);
     }
 
     fn first_cursor(&self, meta: &Self::Meta) -> usize {
@@ -198,6 +198,16 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
     fn cursor_get(&self, meta: &Self::Meta, cursor: usize) -> Option<(usize, V)> {
         if let Err(values) = &self.values {
             Some((self.keys[cursor].clone(), values[cursor].clone()))
+        } else {
+            panic!("ook");
+        }
+    }
+
+    fn cursor_delete(&mut self, meta: &Self::Meta, cursor: usize) -> bool {
+        if let Err(values) = &mut self.values {
+            self.keys.remove(cursor);
+            values.remove(cursor);
+            true
         } else {
             panic!("ook");
         }

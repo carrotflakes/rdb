@@ -1,6 +1,9 @@
 # Carrot flavored relational database
 
 ## TODO
+- [ ] delete
+- [ ] update
+- [ ] unique constraint
 - [ ] alter table
 - [ ] auto increment
 - [ ] explain

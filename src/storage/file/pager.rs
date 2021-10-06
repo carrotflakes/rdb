@@ -49,8 +49,12 @@ impl<P: Page> Pager<P> {
         self.pages.len()
     }
 
-    pub fn get_ref(&mut self, i: usize) -> &P {
-        &self.get_mut_inner(i).page
+    pub fn ensure_page(&mut self, i: usize) {
+        self.get_mut_inner(i);
+    }
+
+    pub fn get_ref(&self, i: usize) -> &P {
+        &self.pages[i].as_ref().unwrap().page
     }
 
     pub fn get_mut(&mut self, i: usize) -> &mut P {
