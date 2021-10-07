@@ -4,11 +4,11 @@ use rdb::{
     front::{
         print_table,
         yaml::{
-            query::{parse_delete_from_yaml, parse_insert_from_yaml, parse_select_from_yaml},
+            query::{parse_insert_from_yaml, parse_named_queries_from_yaml},
             schema::parse_table_from_yaml,
         },
     },
-    query::{Delete, Expr, Insert, ProcessItem, Select, SelectSource},
+    query::{Expr, Insert, ProcessItem, Select, SelectSource},
     schema,
     storage::Storage,
 };
@@ -151,72 +151,9 @@ row:
         )
         .unwrap();
 
-    // let query = Query {
-    //     sub_queries: vec![],
-    //     source: QuerySource {
-    //         table_name: "message".to_string(),
-    //         iterate_over: "id".to_string(),
-    //         from: 0,
-    //         to: 100,
-    //     },
-    //     process: vec![ProcessItem::Join {
-    //         table_name: "user".to_owned(),
-    //         left_key: "user_id".to_owned(),
-    //         right_key: "id".to_owned(),
-    //     },ProcessItem::Select {
-    //         columns: vec![
-    //             ("id".to_owned(), "id".to_owned()),
-    //             ("text".to_owned(), "text".to_owned()),
-    //             ("user.name".to_owned(), "user_name".to_owned()),
-    //         ],
-    //     }],
-    //     post_process: vec![],
-    // };
-    let query = parse_select_from_yaml(
+    let queries = parse_named_queries_from_yaml(
         r"
-source:
-    table: message
-    iterate:
-        over:
-        -   id
-process:
-- join:
-    table: user
-    left_key: user_id
-    right_key: id
-- select:
-    -   name: id
-        from: id
-    -   name: text
-        from: text
-    -   name: user_name
-        from: 'user.name'
-",
-    )
-    .unwrap();
-    let (cs, vs) = engine.execute_select(&query).unwrap();
-    print_table(&cs, &vs);
-
-    engine
-        .execute_insert(
-            &parse_insert_from_yaml(
-                r"
-table: user
-row:
-    id: 3
-    name: echo
-    email: echo
-",
-            )
-            .unwrap(),
-        )
-        .unwrap();
-
-    engine
-        .execute_insert(
-            &parse_insert_from_yaml(
-                r"
-table: message
+name: select_messages
 select:
     source:
         table: message
@@ -224,131 +161,105 @@ select:
             over:
             -   id
     process:
-    -   select:
+    - join:
+        table: user
+        left_key: user_id
+        right_key: id
+    - select:
+        -   name: id
+            from: id
         -   name: text
-        -   name: user_id
-            value: 3
-",
-            )
-            .unwrap(),
-        )
-        .unwrap();
-
-    let (cs, vs) = engine.execute_select(&query).unwrap();
-    print_table(&cs, &vs);
-
-    let (cs, vs) = engine
-        .execute_select(
-            &parse_select_from_yaml(
-                r"
-source:
+            from: text
+        -   name: user_name
+            from: 'user.name'
+---
+name: insert_user
+insert:
+    table: user
+    row:
+        id: '3'
+        name: echo
+        email: echo
+---
+name: insert_messages_from_select
+insert:
     table: message
-    iterate:
-        over:
-        -   id
-process:
--   filter:
-        eq:
-        -   !column text
-        -   !string hello
+    select:
+        source:
+            table: message
+            iterate:
+                over:
+                -   id
+        process:
+        -   select:
+            -   name: text
+            -   name: user_id
+                value: '3'
+---
+name: select_with_filter
+select:
+    source:
+        table: message
+        iterate:
+            over:
+            -   id
+    process:
+    -   filter:
+            eq:
+            -   column: text
+            -   string: hello
+---
+name: select_etc
+select:
+    source:
+        table: message
+        iterate:
+            over:
+            -   id
+    process:
+    -   distinct: user_id
+    -   add_column:
+            name: hoge
+            expr:
+                string: hey
+---
+name: delete1
+delete:
+    source:
+        table: message
+        iterate:
+            over:
+            -   id
+            from:
+            -   '5'
 ",
-            )
-            .unwrap(),
-        )
-        .unwrap();
+    )
+    .unwrap();
+    dbg!(&queries);
+    let (cs, vs) = engine.execute_query(&queries["select_messages"]).unwrap();
     print_table(&cs, &vs);
-    
 
-    let (cs, vs) = engine
-        .execute_select(
-            &parse_select_from_yaml(
-                r"
-source:
-    table: message
-    iterate:
-        over:
-        -   id
-process:
--   distinct: user_id
--   add_column:
-        name: hoge
-        expr: !string hey
-",
-            )
-            .unwrap(),
-        )
-        .unwrap();
-    print_table(&cs, &vs);
+    engine.execute_query(&queries["insert_user"]).unwrap();
 
     engine
-        .execute_delete(
-            &parse_delete_from_yaml(
-                r"
-source:
-    table: message
-    iterate:
-        over:
-        -   id
-        from:
-        -   5
-",
-            )
-            .unwrap(),
-        )
+        .execute_query(&queries["insert_messages_from_select"])
         .unwrap();
 
-    let (cs, vs) = engine.execute_select(&query).unwrap();
+    let (cs, vs) = engine.execute_query(&queries["select_messages"]).unwrap();
+    print_table(&cs, &vs);
+
+    let (cs, vs) = engine
+        .execute_query(&queries["select_with_filter"])
+        .unwrap();
+    print_table(&cs, &vs);
+
+    let (cs, vs) = engine.execute_query(&queries["select_etc"]).unwrap();
+    print_table(&cs, &vs);
+
+    engine.execute_query(&queries["delete1"]).unwrap();
+
+    let (cs, vs) = engine.execute_query(&queries["select_messages"]).unwrap();
     print_table(&cs, &vs);
 
     engine.flush();
-}
-
-#[test]
-fn bintest() {
-    let schema = schema::Schema {
-        tables: vec![
-            schema::Table {
-                name: "user".to_string(),
-                columns: vec![
-                    schema::Column {
-                        name: "id".to_string(),
-                        dtype: Type::U64,
-                        default: None,
-                    },
-                    schema::Column {
-                        name: "name".to_string(),
-                        dtype: Type::String,
-                        default: None,
-                    },
-                    schema::Column {
-                        name: "email".to_string(),
-                        dtype: Type::String,
-                        default: None,
-                    },
-                ],
-                primary_key: Some(0),
-                constraints: Vec::new(),
-            },
-            parse_table_from_yaml(
-                r"
-name: message
-columns:
--   name: id
-    type: u64
-    auto_increment: true
--   name: user_id
-    type: u64
--   name: text
-    type: string
-primary_key: id
-            ",
-            )
-            .unwrap(),
-        ],
-    };
-
-    let mut encoded: Vec<u8> = bincode::serialize(&schema).unwrap();
-    dbg!(encoded.len());
-    encoded.extend([0, 1, 2, 3, 0, 0]);
-    dbg!(bincode::deserialize::<schema::Schema>(&encoded).unwrap());
 }

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::{
     data::Data,
-    query::{self, ProcessItem, Select},
+    query::{self, ProcessItem, Query, Select},
     schema::Schema,
     storage::Storage,
 };
@@ -18,6 +18,14 @@ impl<S: Storage> Engine<S> {
 
     pub fn schema(&self) -> &Schema {
         self.storage.schema()
+    }
+
+    pub fn execute_query(&mut self, query: &Query) -> Result<(Vec<String>, Vec<Data>), String> {
+        match query {
+            Query::Select(select) => self.execute_select(select),
+            Query::Insert(insert) => self.execute_insert(insert).map(|_| (vec![], vec![])),
+            Query::Delete(delete) => self.execute_delete(delete).map(|_| (vec![], vec![])),
+        }
     }
 
     pub fn execute_select(&self, select: &Select) -> Result<(Vec<String>, Vec<Data>), String> {
@@ -377,14 +385,14 @@ fn process_item_appender<S: Storage>(
         }
         ProcessItem::Distinct { column_name } => {
             let column_index = pre_columns.iter().position(|x| x == column_name).unwrap();
-            let mut hashset =HashSet::new();
+            let mut hashset = HashSet::new();
 
             Box::new(move |ctx, row| {
                 if hashset.insert(row[column_index].clone()) {
                     appender(ctx, row);
                 }
             })
-        },
+        }
         ProcessItem::AddColumn { expr, .. } => {
             let expr = convert_expr(expr);
             Box::new(move |ctx, mut row| {

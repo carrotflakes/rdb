@@ -1,16 +1,56 @@
+use std::collections::HashMap;
+
+use serde::Deserialize;
+
 use crate::{
     data::Data,
     front::yaml::{query::mapping::ProcessSelectColumn, string_to_data},
-    query::{Delete, Expr, FilterItem, Insert, ProcessItem, Select, SelectSource},
+    query::{Delete, Expr, FilterItem, Insert, ProcessItem, Query, Select, SelectSource},
 };
+
+pub fn parse_named_queries_from_yaml(
+    src: &str,
+) -> Result<HashMap<String, Query>, serde_yaml::Error> {
+    serde_yaml::Deserializer::from_str(src)
+        .map(|de| {
+            mapping::NamedQuery::deserialize(de).and_then(|named_query| {
+                map_query(named_query.query.clone()).map(|q| (named_query.name, q))
+            })
+        })
+        .collect()
+}
+
+pub fn parse_query_from_yaml(src: &str) -> Result<Query, serde_yaml::Error> {
+    let query: mapping::Query = serde_yaml::from_str(src)?;
+    map_query(query)
+}
 
 pub fn parse_select_from_yaml(src: &str) -> Result<Select, serde_yaml::Error> {
     let select: mapping::Select = serde_yaml::from_str(src)?;
-    Ok(map_select(select))
+    map_select(select)
 }
 
-pub fn map_select(select: mapping::Select) -> Select {
-    Select {
+pub fn parse_insert_from_yaml(src: &str) -> Result<Insert, serde_yaml::Error> {
+    let insert: mapping::Insert = serde_yaml::from_str(src)?;
+    map_insert(insert)
+}
+
+pub fn parse_delete_from_yaml(src: &str) -> Result<Delete, serde_yaml::Error> {
+    let delete: mapping::Delete = serde_yaml::from_str(src)?;
+    map_delete(delete)
+}
+
+fn map_query(query: mapping::Query) -> Result<Query, serde_yaml::Error> {
+    Ok(match query {
+        mapping::Query::Select(select) => Query::Select(map_select(select)?),
+        mapping::Query::Insert(insert) => Query::Insert(map_insert(insert)?),
+        mapping::Query::Delete(delete) => Query::Delete(map_delete(delete)?),
+        mapping::Query::Update() => todo!(),
+    })
+}
+
+pub fn map_select(select: mapping::Select) -> Result<Select, serde_yaml::Error> {
+    Ok(Select {
         sub_queries: vec![],
         source: map_select_source(select.source),
         process: select
@@ -64,7 +104,7 @@ pub fn map_select(select: mapping::Select) -> Select {
             })
             .collect(),
         post_process: vec![],
-    }
+    })
 }
 
 pub fn map_select_source(source: mapping::SelectSource) -> SelectSource {
@@ -100,8 +140,7 @@ pub fn map_select_source(source: mapping::SelectSource) -> SelectSource {
     }
 }
 
-pub fn parse_insert_from_yaml(src: &str) -> Result<Insert, serde_yaml::Error> {
-    let insert: mapping::Insert = serde_yaml::from_str(src)?;
+fn map_insert(insert: mapping::Insert) -> Result<Insert, serde_yaml::Error> {
     match insert {
         mapping::Insert {
             table,
@@ -122,14 +161,13 @@ pub fn parse_insert_from_yaml(src: &str) -> Result<Insert, serde_yaml::Error> {
             select: Some(select),
         } => Ok(Insert::Select {
             table_name: table,
-            select: map_select(select),
+            select: map_select(select)?,
         }),
         _ => panic!("row or select"),
     }
 }
 
-pub fn parse_delete_from_yaml(src: &str) -> Result<Delete, serde_yaml::Error> {
-    let delete: mapping::Delete = serde_yaml::from_str(src)?;
+fn map_delete(delete: mapping::Delete) -> Result<Delete, serde_yaml::Error> {
     Ok(Delete {
         source: map_select_source(delete.source),
         filter: vec![],
@@ -154,6 +192,23 @@ mod mapping {
     use std::collections::HashMap;
 
     use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub struct NamedQuery {
+        pub name: String,
+        #[serde(flatten)]
+        pub query: Query,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum Query {
+        Select(Select),
+        Insert(Insert),
+        Delete(Delete),
+        Update(),
+    }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]

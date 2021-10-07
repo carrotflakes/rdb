@@ -1,6 +1,13 @@
 use crate::data::Data;
 
 #[derive(Debug, Clone)]
+pub enum Query {
+    Select(Select),
+    Insert(Insert),
+    Delete(Delete),
+}
+
+#[derive(Debug, Clone)]
 pub struct Select {
     pub sub_queries: Vec<(String, Select)>,
     pub source: SelectSource,
