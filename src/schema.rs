@@ -13,7 +13,7 @@ pub struct Table {
     pub columns: Vec<Column>,
     pub primary_key: Option<usize>,
     pub constraints: Vec<Constraint>,
-    // pub indices: Vec<Index>,
+    pub indices: Vec<Index>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +39,11 @@ pub enum Constraint {
         foreign_table_name: String,
         foreign_column_index: usize,
     },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Index {
+    pub column_indices: Vec<usize>,
 }
 
 impl Schema {

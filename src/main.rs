@@ -37,6 +37,7 @@ fn main() {
                 ],
                 primary_key: Some(0),
                 constraints: Vec::new(),
+                indices: Vec::new(),
             },
             parse_table_from_yaml(
                 r"
@@ -50,6 +51,8 @@ columns:
 -   name: text
     type: string
 primary_key: id
+indices:
+-   [user_id]
             ",
             )
             .unwrap(),

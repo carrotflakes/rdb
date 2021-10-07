@@ -1,6 +1,6 @@
 use crate::{
     data::Type,
-    schema::{Column, Default, Table},
+    schema::{Column, Default, Index, Table},
 };
 
 use super::string_to_data;
@@ -28,11 +28,22 @@ pub fn parse_table_from_yaml(src: &str) -> Result<Table, serde_yaml::Error> {
     let primary_key = table
         .primary_key
         .map(|name| columns.iter().position(|c| c.name == name).unwrap());
+    let indices = table
+        .indices
+        .into_iter()
+        .map(|column_names| Index {
+            column_indices: column_names
+                .into_iter()
+                .map(|name| columns.iter().position(|c| c.name == name).unwrap())
+                .collect(),
+        })
+        .collect();
     Ok(Table {
         name: table.name,
         columns,
         primary_key,
         constraints: Vec::new(),
+        indices,
     })
 }
 
@@ -45,6 +56,8 @@ mod mapping {
         pub name: String,
         pub columns: Vec<Column>,
         pub primary_key: Option<String>,
+        #[serde(default)]
+        pub indices: Vec<Vec<String>>,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]

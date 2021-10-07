@@ -18,11 +18,17 @@ use self::{
 pub struct File {
     pager: Pager<Page>,
     schema: Schema,
-    source_page_indices: Vec<usize>,
-    key_types: Vec<Vec<Type>>,
-    value_types: Vec<Vec<Type>>,
-    metas: Vec<Meta>,
+    sources: Vec<Source>,
     auto_increment: u64,
+}
+
+pub struct Source {
+    table_index: usize,
+    page_index: usize,
+    key_columns: Vec<String>,
+    value_types: Vec<Type>,
+    parent_source_index: Option<usize>,
+    meta: Meta,
 }
 
 pub struct FileCursor {
@@ -46,30 +52,54 @@ impl Storage for File {
             panic!("schema is too large")
         }
 
+        let source_index = self.sources.len();
         let page_index = self.pager.add_root_node();
         self.pager.ensure_page(page_index); // FIXME
-        self.source_page_indices.push(page_index); // ??
-        self.key_types
-            .push(if let Some(primary_key) = table.primary_key {
-                vec![table.columns[primary_key].dtype.clone()]
+        self.sources.push(Source {
+            table_index: self.schema.tables.len(),
+            page_index,
+            key_columns: if let Some(primary_key) = table.primary_key {
+                vec![table.columns[primary_key].name.clone()]
             } else {
                 vec![]
-            });
-        self.value_types
-            .push(table.columns.iter().map(|c| c.dtype.clone()).collect());
-        self.metas.push(Meta {
-            key_size: if let Some(primary_key) = table.primary_key {
-                table.columns[primary_key].dtype.size()
-            } else {
-                Some(0)
             },
-            value_size: table
-                .columns
-                .iter()
-                .map(|c| c.dtype.size())
-                .collect::<Option<Vec<usize>>>()
-                .map(|ss| ss.into_iter().sum::<usize>()),
+            value_types: table.columns.iter().map(|c| c.dtype.clone()).collect(),
+            parent_source_index: None,
+            meta: Meta {
+                key_size: if let Some(primary_key) = table.primary_key {
+                    table.columns[primary_key].dtype.size()
+                } else {
+                    Some(0)
+                },
+                value_size: table
+                    .columns
+                    .iter()
+                    .map(|c| c.dtype.size())
+                    .collect::<Option<Vec<usize>>>()
+                    .map(|ss| ss.into_iter().sum::<usize>()),
+            },
         });
+
+        // sources for indices
+        for cols in table.indices.iter().map(|i| &i.column_indices) {
+            let key_columns = cols
+                .iter()
+                .map(|ci| &table.columns[*ci])
+                .collect::<Vec<_>>();
+            let page_index = self.pager.add_root_node();
+            self.pager.ensure_page(page_index); // FIXME
+            self.sources.push(Source {
+                table_index: self.schema.tables.len(),
+                page_index,
+                key_columns: key_columns.iter().map(|c| c.name.clone()).collect(),
+                value_types: vec![Type::U64],
+                parent_source_index: Some(source_index),
+                meta: Meta {
+                    key_size: key_columns.iter().map(|c| c.dtype.size()).sum(),
+                    value_size: Type::U64.size(),
+                },
+            });
+        }
 
         self.schema.tables.push(table);
     }
@@ -80,60 +110,57 @@ impl Storage for File {
     }
 
     fn source_index(&self, table_name: &str, key_columns: &[String]) -> Option<Self::SourceIndex> {
-        let (i, _table) = self.schema.get_table(table_name)?;
-        Some(i)
-        // todo!()
+        for (i, source) in self.sources.iter().enumerate() {
+            let table = &self.schema.tables[source.table_index];
+            if table.name == table_name && source.key_columns == key_columns {
+                return Some(i);
+            }
+        }
+        None
     }
 
     fn get_cursor_first(&self, source_index: Self::SourceIndex) -> Self::Cursor {
+        let source = &self.sources[source_index];
         FileCursor {
             source_index,
-            btree_cursor: self.pager.first_cursor(
-                &self.metas[source_index],
-                self.source_page_indices[source_index],
-            ),
+            btree_cursor: self.pager.first_cursor(&source.meta, source.page_index),
         }
     }
 
     fn get_cursor_just(&self, source_index: Self::SourceIndex, key: &Vec<Data>) -> Self::Cursor {
+        let source = &self.sources[source_index];
         let key = data_vec_to_bytes(key);
         FileCursor {
             source_index,
             btree_cursor: self
                 .pager
-                .find(
-                    &self.metas[source_index],
-                    self.source_page_indices[source_index],
-                    &key,
-                )
+                .find(&source.meta, source.page_index, &key)
                 .unwrap(),
         }
     }
 
     fn cursor_get_row(&self, cursor: &Self::Cursor) -> Option<Vec<Data>> {
+        let source = &self.sources[cursor.source_index];
         self.pager
-            .cursor_get(&self.metas[cursor.source_index], &cursor.btree_cursor)
-            .map(|x| data_vec_from_bytes(&self.value_types[cursor.source_index], &x.1).unwrap())
+            .cursor_get(&source.meta, &cursor.btree_cursor)
+            .map(|x| data_vec_from_bytes(&source.value_types, &x.1).unwrap())
     }
 
     fn cursor_advance(&self, cursor: &mut Self::Cursor) -> bool {
-        let c = self
-            .pager
-            .cursor_next(&self.metas[cursor.source_index], &cursor.btree_cursor);
+        let source = &self.sources[cursor.source_index];
+        let c = self.pager.cursor_next(&source.meta, &cursor.btree_cursor);
         cursor.btree_cursor = c;
         true
     }
 
     fn cursor_is_end(&self, cursor: &Self::Cursor) -> bool {
-        self.pager
-            .cursor_is_end(&self.metas[cursor.source_index], &cursor.btree_cursor)
+        let source = &self.sources[cursor.source_index];
+        self.pager.cursor_is_end(&source.meta, &cursor.btree_cursor)
     }
 
     fn cursor_delete(&mut self, cursor: &mut Self::Cursor) -> bool {
-        if let Some(btree_cursor) = self
-            .pager
-            .cursor_delete(&self.metas[cursor.source_index], &cursor.btree_cursor)
-        {
+        let source = &self.sources[cursor.source_index];
+        if let Some(btree_cursor) = self.pager.cursor_delete(&source.meta, &cursor.btree_cursor) {
             cursor.btree_cursor = btree_cursor;
             true
         } else {
@@ -162,7 +189,7 @@ impl Storage for File {
             key_size,
             value_size,
         };
-        let node_i = self.source_page_indices[i];
+        let node_i = self.sources[i].page_index;
         let key = if let Some(primary_key) = table.primary_key {
             vec![data[primary_key].clone()]
         } else {
@@ -192,10 +219,7 @@ impl File {
             Self {
                 pager,
                 schema: Schema::new_empty(),
-                source_page_indices: vec![],
-                key_types: vec![],
-                value_types: vec![],
-                metas: vec![],
+                sources: vec![],
                 auto_increment: 1000,
             }
         } else {
@@ -205,10 +229,7 @@ impl File {
             Self {
                 pager,
                 schema,
-                source_page_indices: vec![],
-                key_types: vec![],
-                value_types: vec![],
-                metas: vec![],
+                sources: vec![],
                 auto_increment: 1000,
             }
         }
@@ -285,6 +306,7 @@ fn test() {
         columns: vec![],
         primary_key: Some(0),
         constraints: vec![],
+        indices: vec![],
     });
 
     f.pager.save();
