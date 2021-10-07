@@ -223,6 +223,17 @@ select:
             expr:
                 string: hey
 ---
+name: select_skip_limit
+select:
+    source:
+        table: message
+        iterate:
+            over:
+            -   id
+    process:
+    -   skip: 2
+    -   limit: 3
+---
 name: delete1
 delete:
     source:
@@ -235,31 +246,22 @@ delete:
 ",
     )
     .unwrap();
-    dbg!(&queries);
-    let (cs, vs) = engine.execute_query(&queries["select_messages"]).unwrap();
-    print_table(&cs, &vs);
 
-    engine.execute_query(&queries["insert_user"]).unwrap();
-
-    engine
-        .execute_query(&queries["insert_messages_from_select"])
-        .unwrap();
-
-    let (cs, vs) = engine.execute_query(&queries["select_messages"]).unwrap();
-    print_table(&cs, &vs);
-
-    let (cs, vs) = engine
-        .execute_query(&queries["select_with_filter"])
-        .unwrap();
-    print_table(&cs, &vs);
-
-    let (cs, vs) = engine.execute_query(&queries["select_etc"]).unwrap();
-    print_table(&cs, &vs);
-
-    engine.execute_query(&queries["delete1"]).unwrap();
-
-    let (cs, vs) = engine.execute_query(&queries["select_messages"]).unwrap();
-    print_table(&cs, &vs);
+    for q in [
+        "select_messages",
+        "insert_user",
+        "insert_messages_from_select",
+        "select_messages",
+        "select_with_filter",
+        "select_etc",
+        "select_skip_limit",
+        "delete1",
+        "select_messages",
+    ] {
+        println!("[{}]", q);
+        let (cs, vs) = engine.execute_query(&queries[q]).unwrap();
+        print_table(&cs, &vs);
+    }
 
     engine.flush();
 }

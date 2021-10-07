@@ -101,6 +101,8 @@ pub fn map_select(select: mapping::Select) -> Result<Select, serde_yaml::Error> 
                     column_name: name,
                     expr: map_expr(expr),
                 },
+                mapping::ProcessItem::Skip(num) => ProcessItem::Skip { num },
+                mapping::ProcessItem::Limit(num) => ProcessItem::Limit { num },
             })
             .collect(),
         post_process: vec![],
@@ -251,6 +253,8 @@ mod mapping {
             name: String,
             expr: Expr,
         },
+        Skip(usize),
+        Limit(usize),
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]

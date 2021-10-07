@@ -401,7 +401,26 @@ fn process_item_appender<S: Storage>(
                 appender(ctx, row);
             })
         }
-        ProcessItem::Skip { num } => todo!(),
-        ProcessItem::Limit { num } => todo!(),
+        ProcessItem::Skip { num } => {
+            let mut count = *num;
+            Box::new(move |ctx, row| {
+                if count == 0 {
+                    appender(ctx, row);
+                } else {
+                    count -= 1;
+                }
+            })
+        }
+        ProcessItem::Limit { num } => {
+            let mut count = *num;
+            Box::new(move |ctx, row| {
+                if count == 0 {
+                    ctx.ended = true;
+                } else {
+                    appender(ctx, row);
+                    count -= 1;
+                }
+            })
+        }
     }
 }
