@@ -210,90 +210,9 @@ fn build_excecutable_query_process<S: Storage>(
     for (p, pre_post_columns) in process.iter().zip(columnss.windows(2)).rev() {
         let pre_columns = &pre_post_columns[0];
         let post_columns = &pre_post_columns[1];
-
-        match p {
-            ProcessItem::Select { columns: cs } => {
-                enum Expr2 {
-                    Column(usize),
-                    Data(Data),
-                }
-                let exprs: Vec<_> = cs
-                    .iter()
-                    .map(|(_, expr)| match expr {
-                        query::Expr::Column(c) => {
-                            Expr2::Column(pre_columns.iter().position(|x| x == c).unwrap())
-                        }
-                        query::Expr::Data(d) => Expr2::Data(d.clone()),
-                    })
-                    .collect();
-                appender = Box::new(move |ctx, row| {
-                    let row = exprs
-                        .iter()
-                        .map(|e| match e {
-                            Expr2::Column(i) => row[*i].clone(),
-                            Expr2::Data(d) => d.clone(),
-                        })
-                        .collect();
-                    appender(ctx, row)
-                });
-            }
-            ProcessItem::Filter {
-                left_key,
-                right_key,
-            } => {
-                let left_i = pre_columns.iter().position(|c| c == left_key).unwrap();
-                let right_i = pre_columns.iter().position(|c| c == right_key).unwrap();
-                appender = Box::new(move |ctx, row| {
-                    if row[left_i] == row[right_i] {
-                        appender(ctx, row)
-                    }
-                })
-            }
-            ProcessItem::Join {
-                table_name,
-                left_key,
-                right_key,
-            } => {
-                let left_i = post_columns.iter().position(|c| c == left_key).unwrap();
-                let (_, table) = schema.get_table(table_name).unwrap();
-                let right_i = table
-                    .columns
-                    .iter()
-                    .position(|c| &c.name == right_key)
-                    .unwrap();
-                let source_index = storage
-                    .source_index(table_name, &[right_key.clone()])
-                    .unwrap(); // TODO!
-                appender = Box::new(move |ctx, row| {
-                    let mut cursor = ctx
-                        .storage
-                        .get_cursor_just(source_index, &vec![row[left_i].clone()]);
-                    if ctx.storage.cursor_is_end(&cursor) {
-                        return;
-                    }
-                    while {
-                        !ctx.storage.cursor_is_end(&cursor)
-                            && if let Some(append_row) = ctx.storage.cursor_get_row(&cursor) {
-                                if append_row[right_i] == row[left_i] {
-                                    let mut row_ = row.clone();
-                                    row_.extend(append_row);
-                                    appender(ctx, row_);
-                                    ctx.storage.cursor_advance(&mut cursor)
-                                } else {
-                                    false
-                                }
-                            } else {
-                                false
-                            }
-                    } {}
-                });
-            }
-            ProcessItem::Distinct { column_name } => todo!(),
-            ProcessItem::AddColumn { hoge } => todo!(),
-            ProcessItem::Skip { num } => todo!(),
-            ProcessItem::Limit { num } => todo!(),
-        }
+        appender = process_item_appender(p, appender, pre_columns, post_columns, schema, storage);
     }
+
     (columnss.pop().unwrap(), appender)
 }
 
@@ -328,5 +247,128 @@ fn select_process_item_column(
         ProcessItem::AddColumn { hoge } => columns.clone(),
         ProcessItem::Skip { .. } => columns.clone(),
         ProcessItem::Limit { .. } => columns.clone(),
+    }
+}
+
+fn process_item_appender<S: Storage>(
+    p: &ProcessItem,
+    mut appender: Box<dyn FnMut(&mut QueryContext<S>, Vec<Data>)>,
+    pre_columns: &Vec<String>,
+    post_columns: &Vec<String>,
+    schema: &Schema,
+    storage: &S,
+) -> Box<dyn FnMut(&mut QueryContext<S>, Vec<Data>)> {
+    match p {
+        ProcessItem::Select { columns: cs } => {
+            enum Expr2 {
+                Column(usize),
+                Data(Data),
+            }
+            let exprs: Vec<_> = cs
+                .iter()
+                .map(|(_, expr)| match expr {
+                    query::Expr::Column(c) => {
+                        Expr2::Column(pre_columns.iter().position(|x| x == c).unwrap())
+                    }
+                    query::Expr::Data(d) => Expr2::Data(d.clone()),
+                })
+                .collect();
+            Box::new(move |ctx, row| {
+                let row = exprs
+                    .iter()
+                    .map(|e| match e {
+                        Expr2::Column(i) => row[*i].clone(),
+                        Expr2::Data(d) => d.clone(),
+                    })
+                    .collect();
+                appender(ctx, row)
+            })
+        }
+        ProcessItem::Filter { items } => {
+            enum Item {
+                Eq(Expr, Expr),
+            }
+            enum Expr {
+                Column(usize),
+                Data(Data),
+            }
+            let convert_expr = |expr: &query::Expr| -> Expr {
+                match expr {
+                    query::Expr::Column(name) => {
+                        Expr::Column(pre_columns.iter().position(|x| x == name).unwrap())
+                    }
+                    query::Expr::Data(data) => Expr::Data(data.clone()),
+                }
+            };
+            fn eval(expr: &Expr, row: &[Data]) -> Data {
+                match expr {
+                    Expr::Column(i) => row[*i].clone(),
+                    Expr::Data(d) => d.clone(),
+                }
+            }
+            let items = items
+                .iter()
+                .map(|item| match item {
+                    query::FilterItem::Eq(left, right) => {
+                        Item::Eq(convert_expr(left), convert_expr(right))
+                    }
+                })
+                .collect::<Vec<_>>();
+            Box::new(move |ctx, row| {
+                for item in &items {
+                    match item {
+                        Item::Eq(left, right) => {
+                            if eval(left, &row) != eval(right, &row) {
+                                return;
+                            }
+                        }
+                    }
+                }
+                appender(ctx, row);
+            })
+        }
+        ProcessItem::Join {
+            table_name,
+            left_key,
+            right_key,
+        } => {
+            let left_i = post_columns.iter().position(|c| c == left_key).unwrap();
+            let (_, table) = schema.get_table(table_name).unwrap();
+            let right_i = table
+                .columns
+                .iter()
+                .position(|c| &c.name == right_key)
+                .unwrap();
+            let source_index = storage
+                .source_index(table_name, &[right_key.clone()])
+                .unwrap(); // TODO!
+            Box::new(move |ctx, row| {
+                let mut cursor = ctx
+                    .storage
+                    .get_cursor_just(source_index, &vec![row[left_i].clone()]);
+                if ctx.storage.cursor_is_end(&cursor) {
+                    return;
+                }
+                while {
+                    !ctx.storage.cursor_is_end(&cursor)
+                        && if let Some(append_row) = ctx.storage.cursor_get_row(&cursor) {
+                            if append_row[right_i] == row[left_i] {
+                                let mut row_ = row.clone();
+                                row_.extend(append_row);
+                                appender(ctx, row_);
+                                ctx.storage.cursor_advance(&mut cursor)
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                } {}
+            })
+        }
+        ProcessItem::Distinct { column_name } => todo!(),
+        ProcessItem::AddColumn { hoge } => todo!(),
+        ProcessItem::Skip { num } => todo!(),
+        ProcessItem::Limit { num } => todo!(),
     }
 }

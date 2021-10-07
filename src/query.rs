@@ -22,8 +22,7 @@ pub enum ProcessItem {
         columns: Vec<(String, Expr)>,
     },
     Filter {
-        left_key: String,
-        right_key: String, // todo
+        items: Vec<FilterItem>,
     },
     Join {
         table_name: String,
@@ -45,9 +44,8 @@ pub enum ProcessItem {
 }
 
 #[derive(Debug, Clone)]
-pub struct Filter {
-    left_key: String,
-    right_key: String, // todo
+pub enum FilterItem {
+    Eq(Expr, Expr),
 }
 
 #[derive(Debug, Clone)]
@@ -79,7 +77,7 @@ pub enum Insert {
 #[derive(Debug, Clone)]
 pub struct Delete {
     pub source: SelectSource,
-    pub filter: Vec<Filter>,
+    pub filter: Vec<FilterItem>,
 }
 
 #[derive(Debug, Clone)]

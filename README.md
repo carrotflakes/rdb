@@ -1,6 +1,7 @@
 # Carrot flavored relational database
 
 ## TODO
+- [ ] null
 - [ ] delete
 - [ ] update
 - [ ] unique constraint
@@ -53,7 +54,10 @@ select:
       - id
       - name
       - email
-    - filter: email == "hoge@a.com"
+    - filter:
+      eq:
+      - !column email
+      - !string "hoge@a.com"
     - join:
       table: profile
       leftKey: id

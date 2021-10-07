@@ -1,6 +1,7 @@
 use crate::{
+    data::Data,
     front::yaml::{query::mapping::ProcessSelectColumn, string_to_data},
-    query::{Delete, Expr, Insert, ProcessItem, Select, SelectSource},
+    query::{Delete, Expr, FilterItem, Insert, ProcessItem, Select, SelectSource},
 };
 
 pub fn parse_select_from_yaml(src: &str) -> Result<Select, serde_yaml::Error> {
@@ -41,12 +42,8 @@ pub fn map_select(select: mapping::Select) -> Select {
                         })
                         .collect(),
                 },
-                mapping::ProcessItem::Filter {
-                    left_key,
-                    right_key,
-                } => ProcessItem::Filter {
-                    left_key,
-                    right_key,
+                mapping::ProcessItem::Filter(filter_item) => ProcessItem::Filter {
+                    items: vec![map_filter_item(filter_item)],
                 },
                 mapping::ProcessItem::Join {
                     table,
@@ -132,6 +129,20 @@ pub fn parse_delete_from_yaml(src: &str) -> Result<Delete, serde_yaml::Error> {
     })
 }
 
+fn map_filter_item(filter_item: mapping::FilterItem) -> FilterItem {
+    match filter_item {
+        mapping::FilterItem::Eq(left, right) => FilterItem::Eq(map_expr(left), map_expr(right)),
+    }
+}
+
+fn map_expr(expr: mapping::Expr) -> Expr {
+    match expr {
+        mapping::Expr::Column(column_name) => Expr::Column(column_name),
+        mapping::Expr::String(string) => Expr::Data(Data::String(string)),
+        mapping::Expr::U64(u64) => Expr::Data(Data::U64(u64)),
+    }
+}
+
 mod mapping {
     use std::collections::HashMap;
 
@@ -167,15 +178,26 @@ mod mapping {
     #[serde(rename_all = "snake_case")]
     pub enum ProcessItem {
         Select(Vec<ProcessSelectColumn>),
-        Filter {
-            left_key: String,
-            right_key: String, // todo
-        },
+        Filter(FilterItem),
         Join {
             table: String,
             left_key: String,
             right_key: String,
         },
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum FilterItem {
+        Eq(Expr, Expr),
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum Expr {
+        Column(String),
+        String(String),
+        U64(u64),
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]

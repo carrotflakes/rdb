@@ -237,7 +237,26 @@ select:
     let (cs, vs) = engine.execute_select(&query).unwrap();
     print_table(&cs, &vs);
 
-    engine.flush();
+    let (cs, vs) = engine
+        .execute_select(
+            &parse_select_from_yaml(
+                r"
+source:
+    table: message
+    iterate:
+        over:
+        -   id
+process:
+-   filter:
+        eq:
+        -   !column text
+        -   !string hello
+",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    print_table(&cs, &vs);
 
     engine
         .execute_delete(
