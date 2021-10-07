@@ -22,10 +22,10 @@ pub type Value = Vec<u8>;
 // child...
 //
 // ## key_size fixed
-// key..., child...
+// key..., ...child
 //
 // ## key_size variable
-// (key_size, key)..., ...child
+// key_index..., ...(key, child)
 //
 //
 // # leaf node layout
@@ -35,23 +35,23 @@ pub type Value = Vec<u8>;
 // [4] next node id
 // ...
 //
-// ## key_size 0, value_size fixed
+// ## key_size 0       , value_size fixed
 // value...
 //
-// ## key_size 0, value_size variable
-// value_index... ...value
+// ## key_size 0       , value_size variable
+// value_index...                 , ...value
 //
-// ## key_size fixed, value_size fixed
-// key..., value...
+// ## key_size fixed   , value_size fixed
+// key...                         , ...value
 //
-// ## key_size fixed, value_size variable
-// (key, value_index)..., ...value
+// ## key_size fixed   , value_size variable
+// (key, value_index)...          , ...value
 //
 // ## key_size variable, value_size fixed
-// (key_size, key)..., ...value
+// key_index...                   , ...(key, value)
 //
 // ## key_size variable, value_size variable
-// (key_size, key, value_index)..., ...value
+// (key_index, value_index)...    , ...(key, value)
 
 #[derive(Debug)]
 pub struct Meta {
@@ -182,6 +182,8 @@ impl BTreeNode<Key, Value> for Page {
         let res = match meta.key_size {
             Some(0) => todo!(),
             Some(key_size) => {
+                let value_size = 4;
+
                 // check if insertable
                 let insert_data_size = key_size + INDEX_SIZE;
                 let remain_data_size =
@@ -201,24 +203,19 @@ impl BTreeNode<Key, Value> for Page {
                     }
                 }
 
-                let capacity = (PAGE_SIZE as usize - HEADER_SIZE + key_size) / insert_data_size;
-                let values_offset = HEADER_SIZE + (capacity - 1) * key_size;
-
                 // move forward keys and values
                 let key_offset = HEADER_SIZE + key_size * insert_index;
                 self.copy_within(
                     key_offset..HEADER_SIZE + key_size * (size - 1),
                     key_offset + key_size,
                 );
-                let value_offset = values_offset + INDEX_SIZE * (insert_index + 1);
-                self.copy_within(
-                    value_offset..values_offset + INDEX_SIZE * size,
-                    value_offset + INDEX_SIZE,
-                );
+                let values_end = PAGE_SIZE as usize - value_size * size;
+                let value_offset = PAGE_SIZE as usize - value_size * insert_index;
+                self.copy_within(values_end..value_offset, values_end - value_size);
 
                 // insert
                 self[key_offset..key_offset + key_size].copy_from_slice(key);
-                self[value_offset..value_offset + INDEX_SIZE]
+                self[value_offset - value_size..value_offset]
                     .copy_from_slice(&(node_i as u16).to_le_bytes());
 
                 true
@@ -239,18 +236,15 @@ impl BTreeNode<Key, Value> for Page {
             Some(key_size) => {
                 // TODO: binary search
                 let value_size = 4;
-                let capacity = (PAGE_SIZE as usize - HEADER_SIZE) / (key_size + value_size);
-                let values_offset = HEADER_SIZE + capacity * key_size;
-
                 for i in 0..size - 1 {
                     let offset = HEADER_SIZE + key_size * i;
                     let k = &self[offset..offset + key_size];
                     if key.as_slice() < k {
-                        let offset = values_offset + value_size * i;
+                        let offset = PAGE_SIZE as usize - value_size * (i + 1);
                         return parse_u32(&self[offset..offset + value_size]) as usize;
                     }
                 }
-                let offset = values_offset + value_size * (size - 1);
+                let offset = PAGE_SIZE as usize - value_size * size;
                 parse_u32(&self[offset..offset + value_size]) as usize
             }
             None => todo!(),
@@ -260,47 +254,28 @@ impl BTreeNode<Key, Value> for Page {
     fn get_first_child(&self, meta: &Self::Meta) -> usize {
         match meta.key_size {
             Some(0) => todo!(),
-            Some(key_size) => {
+            Some(_) | None => {
                 let value_size = 4;
-                let capacity = (PAGE_SIZE as usize - HEADER_SIZE) / (key_size + value_size);
-                let values_offset = HEADER_SIZE + capacity * key_size;
-
-                return parse_u32(&self[values_offset..values_offset + value_size]) as usize;
+                return parse_u32(&self.slice(PAGE_SIZE as usize - value_size, value_size))
+                    as usize;
             }
-            None => todo!(),
         }
     }
 
     fn get_children(&self, meta: &Self::Meta) -> Vec<usize> {
         let size = self.size(meta);
-        match meta {
-            Meta {
-                key_size: Some(0),
-                value_size: Some(value_size),
-            } => todo!(),
-            Meta {
-                key_size: Some(0),
-                value_size: None,
-            } => todo!(),
-            Meta {
-                key_size: Some(_),
-                value_size: _,
-            } => {
+        match meta.key_size {
+            Some(0) => todo!(),
+            Some(_) => {
+                let value_size = 4;
                 let mut node_is = Vec::with_capacity(size);
                 for i in 0..size {
-                    let offset = PAGE_SIZE as usize - 4 * (size - i);
-                    node_is.push(parse_u32(&self[offset..offset + 4]) as usize);
+                    let offset = PAGE_SIZE as usize - value_size * (i + 1);
+                    node_is.push(parse_u32(self.slice(offset, value_size)) as usize);
                 }
                 node_is
             }
-            Meta {
-                key_size: None,
-                value_size: Some(value_size),
-            } => todo!(),
-            Meta {
-                key_size: None,
-                value_size: None,
-            } => todo!(),
+            None => todo!(),
         }
     }
 
@@ -318,13 +293,10 @@ impl BTreeNode<Key, Value> for Page {
         match meta.key_size {
             Some(0) => todo!(),
             Some(key_size) => {
-                let capacity = (PAGE_SIZE as usize - HEADER_SIZE) / (key_size + value_size);
-                let values_offset = HEADER_SIZE + capacity * key_size;
-
                 self[HEADER_SIZE..HEADER_SIZE + key_size].copy_from_slice(key);
-                self[values_offset..values_offset + value_size]
+                self.slice_mut(PAGE_SIZE as usize - value_size, value_size)
                     .copy_from_slice(&(i1 as u32).to_le_bytes());
-                self[values_offset + value_size..values_offset + value_size * 2]
+                self.slice_mut(PAGE_SIZE as usize - value_size * 2, value_size)
                     .copy_from_slice(&(i2 as u32).to_le_bytes());
             }
             None => todo!(),
