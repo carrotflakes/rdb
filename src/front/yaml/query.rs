@@ -54,6 +54,13 @@ pub fn map_select(select: mapping::Select) -> Select {
                     left_key,
                     right_key,
                 },
+                mapping::ProcessItem::Distinct(column_name) => {
+                    ProcessItem::Distinct { column_name }
+                }
+                mapping::ProcessItem::AddColumn { name, expr } => ProcessItem::AddColumn {
+                    column_name: name,
+                    expr: map_expr(expr),
+                },
             })
             .collect(),
         post_process: vec![],
@@ -183,6 +190,11 @@ mod mapping {
             table: String,
             left_key: String,
             right_key: String,
+        },
+        Distinct(String),
+        AddColumn {
+            name: String,
+            expr: Expr,
         },
     }
 

@@ -257,6 +257,28 @@ process:
         )
         .unwrap();
     print_table(&cs, &vs);
+    
+
+    let (cs, vs) = engine
+        .execute_select(
+            &parse_select_from_yaml(
+                r"
+source:
+    table: message
+    iterate:
+        over:
+        -   id
+process:
+-   distinct: user_id
+-   add_column:
+        name: hoge
+        expr: !string hey
+",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    print_table(&cs, &vs);
 
     engine
         .execute_delete(

@@ -33,7 +33,8 @@ pub enum ProcessItem {
         column_name: String,
     },
     AddColumn {
-        hoge: String,
+        column_name: String,
+        expr: Expr,
     },
     Skip {
         num: usize,

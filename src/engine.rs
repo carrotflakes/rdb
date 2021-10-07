@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::{
     data::Data,
     query::{self, ProcessItem, Select},
@@ -244,7 +246,11 @@ fn select_process_item_column(
             )
             .collect(),
         ProcessItem::Distinct { .. } => columns.clone(),
-        ProcessItem::AddColumn { hoge } => columns.clone(),
+        ProcessItem::AddColumn { column_name, .. } => {
+            let mut columns = columns.clone();
+            columns.push(column_name.clone());
+            columns
+        }
         ProcessItem::Skip { .. } => columns.clone(),
         ProcessItem::Limit { .. } => columns.clone(),
     }
@@ -258,6 +264,27 @@ fn process_item_appender<S: Storage>(
     schema: &Schema,
     storage: &S,
 ) -> Box<dyn FnMut(&mut QueryContext<S>, Vec<Data>)> {
+    enum Expr {
+        Column(usize),
+        Data(Data),
+    }
+
+    let convert_expr = |expr: &query::Expr| -> Expr {
+        match expr {
+            query::Expr::Column(name) => {
+                Expr::Column(pre_columns.iter().position(|x| x == name).unwrap())
+            }
+            query::Expr::Data(data) => Expr::Data(data.clone()),
+        }
+    };
+
+    fn eval(expr: &Expr, row: &[Data]) -> Data {
+        match expr {
+            Expr::Column(i) => row[*i].clone(),
+            Expr::Data(d) => d.clone(),
+        }
+    }
+
     match p {
         ProcessItem::Select { columns: cs } => {
             enum Expr2 {
@@ -287,24 +314,6 @@ fn process_item_appender<S: Storage>(
         ProcessItem::Filter { items } => {
             enum Item {
                 Eq(Expr, Expr),
-            }
-            enum Expr {
-                Column(usize),
-                Data(Data),
-            }
-            let convert_expr = |expr: &query::Expr| -> Expr {
-                match expr {
-                    query::Expr::Column(name) => {
-                        Expr::Column(pre_columns.iter().position(|x| x == name).unwrap())
-                    }
-                    query::Expr::Data(data) => Expr::Data(data.clone()),
-                }
-            };
-            fn eval(expr: &Expr, row: &[Data]) -> Data {
-                match expr {
-                    Expr::Column(i) => row[*i].clone(),
-                    Expr::Data(d) => d.clone(),
-                }
             }
             let items = items
                 .iter()
@@ -366,8 +375,24 @@ fn process_item_appender<S: Storage>(
                 } {}
             })
         }
-        ProcessItem::Distinct { column_name } => todo!(),
-        ProcessItem::AddColumn { hoge } => todo!(),
+        ProcessItem::Distinct { column_name } => {
+            let column_index = pre_columns.iter().position(|x| x == column_name).unwrap();
+            let mut hashset =HashSet::new();
+
+            Box::new(move |ctx, row| {
+                if hashset.insert(row[column_index].clone()) {
+                    appender(ctx, row);
+                }
+            })
+        },
+        ProcessItem::AddColumn { expr, .. } => {
+            let expr = convert_expr(expr);
+            Box::new(move |ctx, mut row| {
+                let data = eval(&expr, &row);
+                row.push(data);
+                appender(ctx, row);
+            })
+        }
         ProcessItem::Skip { num } => todo!(),
         ProcessItem::Limit { num } => todo!(),
     }
