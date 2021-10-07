@@ -80,7 +80,7 @@ impl BTreeNode<Key, Value> for Page {
     }
 
     fn size(&self, _: &Self::Meta) -> usize {
-        parse_u16(&self[1 + 4..1 + 4 + 2]) as usize
+        parse_u16(self.slice(1 + 4, 2)) as usize
     }
 
     fn split_out(&mut self, meta: &Self::Meta) -> (Key, Self) {
@@ -90,7 +90,7 @@ impl BTreeNode<Key, Value> for Page {
             let to_size = size / 2;
             self.set_size(to_size);
 
-            let mut new_page = Page::new_leaf(None);
+            let mut new_page = Page::new_leaf();
             new_page.set_size(size - to_size);
 
             match meta {
@@ -177,33 +177,13 @@ impl BTreeNode<Key, Value> for Page {
         }
     }
 
-    fn is_full(&self, meta: &Self::Meta) -> bool {
-        debug_assert!(!self.is_leaf(meta));
-        if let Some(key_size) = meta.key_size {
-            // fixed key_size:
-            let value_size = 4;
-            let size = self.size(meta);
-            let size_max = (PAGE_SIZE as usize - HEADER_SIZE) / (key_size + value_size);
-            size == size_max
-        } else {
-            // variable key_size:
-            panic!("variable key_size is not supported")
-        }
-    }
-
     fn insert_node(&mut self, meta: &Self::Meta, key: &Key, node_i: usize) -> bool {
         let size = self.size(meta);
-        let res = match meta {
-            Meta {
-                key_size: Some(0),
-                value_size: _,
-            } => todo!(),
-            Meta {
-                key_size: Some(key_size),
-                value_size: _,
-            } => {
+        let res = match meta.key_size {
+            Some(0) => todo!(),
+            Some(key_size) => {
                 // check if insertable
-                let insert_data_size = *key_size + INDEX_SIZE;
+                let insert_data_size = key_size + INDEX_SIZE;
                 let remain_data_size =
                     PAGE_SIZE as usize - (HEADER_SIZE + key_size * (size - 1) + INDEX_SIZE * size);
                 if insert_data_size > remain_data_size {
@@ -222,7 +202,7 @@ impl BTreeNode<Key, Value> for Page {
                 }
 
                 let capacity = (PAGE_SIZE as usize - HEADER_SIZE + key_size) / insert_data_size;
-                let values_offset = HEADER_SIZE + (capacity - 1) * *key_size;
+                let values_offset = HEADER_SIZE + (capacity - 1) * key_size;
 
                 // move forward keys and values
                 let key_offset = HEADER_SIZE + key_size * insert_index;
@@ -243,10 +223,7 @@ impl BTreeNode<Key, Value> for Page {
 
                 true
             }
-            Meta {
-                key_size: None,
-                value_size: _,
-            } => todo!(),
+            None => todo!(),
         };
         if res {
             // increment size
@@ -257,16 +234,13 @@ impl BTreeNode<Key, Value> for Page {
 
     fn get_child(&self, meta: &Self::Meta, key: &Key) -> usize {
         let size = self.size(meta);
-        if size == 0 {
-            return 0;
-        }
-        match &meta.key_size {
+        match meta.key_size {
             Some(0) => 0,
             Some(key_size) => {
                 // TODO: binary search
                 let value_size = 4;
-                let capacity = (PAGE_SIZE as usize - HEADER_SIZE) / (*key_size + value_size);
-                let values_offset = HEADER_SIZE + capacity * *key_size;
+                let capacity = (PAGE_SIZE as usize - HEADER_SIZE) / (key_size + value_size);
+                let values_offset = HEADER_SIZE + capacity * key_size;
 
                 for i in 0..size - 1 {
                     let offset = HEADER_SIZE + key_size * i;
@@ -284,12 +258,12 @@ impl BTreeNode<Key, Value> for Page {
     }
 
     fn get_first_child(&self, meta: &Self::Meta) -> usize {
-        match &meta.key_size {
+        match meta.key_size {
             Some(0) => todo!(),
             Some(key_size) => {
                 let value_size = 4;
-                let capacity = (PAGE_SIZE as usize - HEADER_SIZE) / (*key_size + value_size);
-                let values_offset = HEADER_SIZE + capacity * *key_size;
+                let capacity = (PAGE_SIZE as usize - HEADER_SIZE) / (key_size + value_size);
+                let values_offset = HEADER_SIZE + capacity * key_size;
 
                 return parse_u32(&self[values_offset..values_offset + value_size]) as usize;
             }
@@ -341,17 +315,11 @@ impl BTreeNode<Key, Value> for Page {
         self.set_next(0);
 
         let value_size = 4;
-        match meta {
-            Meta {
-                key_size: Some(0),
-                value_size: _,
-            } => todo!(),
-            Meta {
-                key_size: Some(key_size),
-                value_size: _,
-            } => {
-                let capacity = (PAGE_SIZE as usize - HEADER_SIZE) / (*key_size + value_size);
-                let values_offset = HEADER_SIZE + capacity * *key_size;
+        match meta.key_size {
+            Some(0) => todo!(),
+            Some(key_size) => {
+                let capacity = (PAGE_SIZE as usize - HEADER_SIZE) / (key_size + value_size);
+                let values_offset = HEADER_SIZE + capacity * key_size;
 
                 self[HEADER_SIZE..HEADER_SIZE + key_size].copy_from_slice(key);
                 self[values_offset..values_offset + value_size]
@@ -359,10 +327,7 @@ impl BTreeNode<Key, Value> for Page {
                 self[values_offset + value_size..values_offset + value_size * 2]
                     .copy_from_slice(&(i2 as u32).to_le_bytes());
             }
-            Meta {
-                key_size: None,
-                value_size: _,
-            } => todo!(),
+            None => todo!(),
         }
     }
 
@@ -509,10 +474,6 @@ impl BTreeNode<Key, Value> for Page {
             self.set_size(size + 1);
         }
         res
-    }
-
-    fn remove(&mut self, meta: &Self::Meta, key: &Key) -> bool {
-        todo!()
     }
 
     fn get_next(&self, _: &Self::Meta) -> Option<usize> {

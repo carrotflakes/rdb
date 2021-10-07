@@ -66,13 +66,6 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
         }
     }
 
-    fn is_full(&self, _: &()) -> bool {
-        match &self.values {
-            Ok(x) => x.len() == 4,
-            Err(x) => x.len() == 3,
-        }
-    }
-
     fn insert_node(&mut self, _: &(), key: &usize, node_i: usize) -> bool {
         if let Ok(children) = &mut self.values {
             for i in 0..self.keys.len() {
@@ -136,7 +129,10 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
     }
 
     fn insert_value(&mut self, meta: &(), key: &usize, value: &V) -> bool {
-        if self.is_full(meta) {
+        if match &self.values {
+            Ok(x) => x.len() == 4,
+            Err(x) => x.len() == 3,
+        } {
             return false;
         }
         if let Err(values) = &mut self.values {
@@ -154,20 +150,6 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
             true
         } else {
             panic!("a")
-        }
-    }
-
-    fn remove(&mut self, _: &(), key: &usize) -> bool {
-        if let Some(i) = self.keys.iter().position(|k| k == key) {
-            if let Err(values) = &mut self.values {
-                self.keys.remove(i);
-                values.remove(i);
-                true
-            } else {
-                panic!("ook");
-            }
-        } else {
-            false
         }
     }
 
@@ -352,7 +334,8 @@ fn test() {
         t.find_one(&meta, 0, v).unwrap();
     }
     for v in &vs {
-        t.remove(&meta, 0, v);
+        let c = t.find(&meta, 0, v).unwrap();
+        t.cursor_delete(&meta, &c);
     }
     t.show_nodes(0);
 }

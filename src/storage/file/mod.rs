@@ -40,7 +40,11 @@ impl Storage for File {
 
     fn add_table(&mut self, table: crate::schema::Table) {
         let page = &mut self.pager.get_mut(0)[..];
-        dbg!(bincode::serialize_into(page, &self.schema)).unwrap(); // todo: over size
+        if bincode::serialized_size(&self.schema).unwrap() <= page.len() as u64 {
+            dbg!(bincode::serialize_into(page, &self.schema)).unwrap();
+        } else {
+            panic!("schema is too large")
+        }
 
         let page_index = self.pager.add_root_node();
         self.pager.ensure_page(page_index); // FIXME
@@ -245,10 +249,7 @@ impl std::fmt::Debug for Page {
 }
 
 impl Page {
-    pub fn new_internal(parent: Option<usize>) -> Self {
-        Page::from([0; PAGE_SIZE as usize])
-    }
-    pub fn new_leaf(parent: Option<usize>) -> Self {
+    pub fn new_leaf() -> Self {
         let mut page = Page::from([0; PAGE_SIZE as usize]);
         page[0] = 1;
         page

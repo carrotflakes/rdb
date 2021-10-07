@@ -5,11 +5,14 @@
 - [ ] delete
 - [ ] update
 - [ ] unique constraint
+- [ ] foreign key constraint
+- [ ] drop table
 - [ ] alter table
 - [ ] auto increment
 - [ ] explain
 - [ ] jarnal log
 - [ ] index
+- [ ] large data
 - [ ] unit tests
 - [ ] integration tests
 - [ ] benchmark

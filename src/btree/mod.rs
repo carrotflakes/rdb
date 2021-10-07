@@ -16,8 +16,6 @@ pub trait BTreeNode<K: Clone + PartialEq + PartialOrd, V: Clone> {
     fn size(&self, meta: &Self::Meta) -> usize;
     fn split_out(&mut self, meta: &Self::Meta) -> (K, Self);
 
-    // expect internal node
-    fn is_full(&self, meta: &Self::Meta) -> bool;
     fn insert_node(&mut self, meta: &Self::Meta, key: &K, node_i: usize) -> bool;
     fn get_child(&self, meta: &Self::Meta, key: &K) -> usize;
     fn get_first_child(&self, meta: &Self::Meta) -> usize;
@@ -26,7 +24,6 @@ pub trait BTreeNode<K: Clone + PartialEq + PartialOrd, V: Clone> {
     fn init_as_root_internal(&mut self, meta: &Self::Meta, key: &K, i1: usize, i2: usize);
 
     fn insert_value(&mut self, meta: &Self::Meta, key: &K, value: &V) -> bool;
-    fn remove(&mut self, meta: &Self::Meta, key: &K) -> bool;
     fn get_next(&self, meta: &Self::Meta) -> Option<usize>;
     fn set_next(&mut self, meta: &Self::Meta, i: usize);
 
@@ -117,7 +114,12 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
     ) -> Result<usize, String> {
         if let Some(parent_i) = self.node_ref(node_i).get_parent(meta) {
             let inserted_node_i = self.push(node);
-            if self.node_ref(parent_i).is_full(meta) {
+            if self
+                .node_mut(parent_i)
+                .insert_node(meta, key, inserted_node_i)
+            {
+                self.node_mut(inserted_node_i).set_parent(meta, parent_i);
+            } else {
                 // 親ノードがいっぱいなので分割する
                 let (pivot_key, mut new_node) = self.node_mut(parent_i).split_out(meta);
                 if key < &pivot_key {
@@ -132,10 +134,6 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
                     self.node_mut(inserted_node_i).set_parent(meta, parent_i);
                     self.reparent(meta, parent_i);
                 }
-            } else {
-                self.node_mut(parent_i)
-                    .insert_node(meta, key, inserted_node_i);
-                self.node_mut(inserted_node_i).set_parent(meta, parent_i);
             }
             Ok(inserted_node_i)
         } else {
@@ -161,21 +159,6 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
             for child_i in self.node_ref(node_i).get_children(meta) {
                 self.node_mut(child_i).set_parent(meta, node_i);
             }
-        }
-    }
-
-    fn remove(
-        &mut self,
-        meta: &<Self::Node as BTreeNode<K, V>>::Meta,
-        node_i: usize,
-        key: &K,
-    ) -> bool {
-        let node = self.node_mut(node_i);
-        if node.is_leaf(meta) {
-            node.remove(meta, key)
-        } else {
-            let node_i = node.get_child(meta, key);
-            self.remove(meta, node_i, key)
         }
     }
 
