@@ -1,16 +1,12 @@
-use std::collections::HashMap;
-
 use serde::Deserialize;
 
 use crate::{
     data::Data,
     front::yaml::{query::mapping::ProcessSelectColumn, string_to_data},
-    query::{Delete, Expr, FilterItem, Insert, ProcessItem, Query, Select, SelectSource},
+    query::{Delete, Expr, FilterItem, Insert, ProcessItem, Query, Select, SelectSource, Stream},
 };
 
-pub fn parse_named_queries_from_yaml(
-    src: &str,
-) -> Result<HashMap<String, Query>, serde_yaml::Error> {
+pub fn parse_named_queries_from_yaml(src: &str) -> Result<Vec<(String, Query)>, serde_yaml::Error> {
     serde_yaml::Deserializer::from_str(src)
         .map(|de| {
             mapping::NamedQuery::deserialize(de).and_then(|named_query| {
@@ -50,61 +46,43 @@ fn map_query(query: mapping::Query) -> Result<Query, serde_yaml::Error> {
 }
 
 pub fn map_select(select: mapping::Select) -> Result<Select, serde_yaml::Error> {
+    let streams = match select {
+        mapping::Select {
+            source: None,
+            process,
+            streams: Some(streams),
+            post_process,
+        } => streams
+            .into_iter()
+            .map(|s| {
+                Ok(Stream {
+                    source: map_select_source(s.source),
+                    process: s
+                        .process
+                        .into_iter()
+                        .chain(process.iter().cloned())
+                        .map(map_process_item)
+                        .collect::<Result<Vec<_>, serde_yaml::Error>>()?,
+                })
+            })
+            .collect::<Result<Vec<_>, serde_yaml::Error>>()?,
+        mapping::Select {
+            source: Some(source),
+            process,
+            streams: None,
+            post_process,
+        } => vec![Stream {
+            source: map_select_source(source),
+            process: process
+                .into_iter()
+                .map(map_process_item)
+                .collect::<Result<_, _>>()?,
+        }],
+        _ => panic!("invalid select"),
+    };
     Ok(Select {
         sub_queries: vec![],
-        source: map_select_source(select.source),
-        process: select
-            .process
-            .into_iter()
-            .map(|x| match x {
-                mapping::ProcessItem::Select(columns) => ProcessItem::Select {
-                    columns: columns
-                        .into_iter()
-                        .map(|x| match x {
-                            ProcessSelectColumn {
-                                name: Some(name),
-                                from: Some(from),
-                                value: None,
-                            } => (name, Expr::Column(from)),
-                            ProcessSelectColumn {
-                                name: Some(name),
-                                from: None,
-                                value: Some(value),
-                            } => (name, Expr::Data(string_to_data(value))),
-                            ProcessSelectColumn {
-                                name: Some(name),
-                                from: None,
-                                value: None,
-                            } => (name.clone(), Expr::Column(name)),
-                            _ => {
-                                panic!("oops")
-                            }
-                        })
-                        .collect(),
-                },
-                mapping::ProcessItem::Filter(filter_item) => ProcessItem::Filter {
-                    items: vec![map_filter_item(filter_item)],
-                },
-                mapping::ProcessItem::Join {
-                    table,
-                    left_key,
-                    right_key,
-                } => ProcessItem::Join {
-                    table_name: table,
-                    left_key,
-                    right_key,
-                },
-                mapping::ProcessItem::Distinct(column_name) => {
-                    ProcessItem::Distinct { column_name }
-                }
-                mapping::ProcessItem::AddColumn { name, expr } => ProcessItem::AddColumn {
-                    column_name: name,
-                    expr: map_expr(expr),
-                },
-                mapping::ProcessItem::Skip(num) => ProcessItem::Skip { num },
-                mapping::ProcessItem::Limit(num) => ProcessItem::Limit { num },
-            })
-            .collect(),
+        streams,
         post_process: vec![],
     })
 }
@@ -169,6 +147,55 @@ fn map_insert(insert: mapping::Insert) -> Result<Insert, serde_yaml::Error> {
     }
 }
 
+fn map_process_item(process_item: mapping::ProcessItem) -> Result<ProcessItem, serde_yaml::Error> {
+    Ok(match process_item {
+        mapping::ProcessItem::Select(columns) => ProcessItem::Select {
+            columns: columns
+                .into_iter()
+                .map(|x| match x {
+                    ProcessSelectColumn {
+                        name: Some(name),
+                        from: Some(from),
+                        value: None,
+                    } => (name, Expr::Column(from)),
+                    ProcessSelectColumn {
+                        name: Some(name),
+                        from: None,
+                        value: Some(value),
+                    } => (name, Expr::Data(string_to_data(value))),
+                    ProcessSelectColumn {
+                        name: Some(name),
+                        from: None,
+                        value: None,
+                    } => (name.clone(), Expr::Column(name)),
+                    _ => {
+                        panic!("oops")
+                    }
+                })
+                .collect(),
+        },
+        mapping::ProcessItem::Filter(filter_item) => ProcessItem::Filter {
+            items: vec![map_filter_item(filter_item)],
+        },
+        mapping::ProcessItem::Join {
+            table,
+            left_key,
+            right_key,
+        } => ProcessItem::Join {
+            table_name: table,
+            left_key,
+            right_key,
+        },
+        mapping::ProcessItem::Distinct(column_name) => ProcessItem::Distinct { column_name },
+        mapping::ProcessItem::AddColumn { name, expr } => ProcessItem::AddColumn {
+            column_name: name,
+            expr: map_expr(expr),
+        },
+        mapping::ProcessItem::Skip(num) => ProcessItem::Skip { num },
+        mapping::ProcessItem::Limit(num) => ProcessItem::Limit { num },
+    })
+}
+
 fn map_delete(delete: mapping::Delete) -> Result<Delete, serde_yaml::Error> {
     Ok(Delete {
         source: map_select_source(delete.source),
@@ -215,11 +242,22 @@ mod mapping {
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
     pub struct Select {
-        pub source: SelectSource,
+        #[serde(default)]
+        pub source: Option<SelectSource>,
         #[serde(default)]
         pub process: Vec<ProcessItem>,
         #[serde(default)]
+        pub streams: Option<Vec<Stream>>,
+        #[serde(default)]
         pub post_process: Vec<PostProcessItem>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub struct Stream {
+        pub source: SelectSource,
+        #[serde(default)]
+        pub process: Vec<ProcessItem>,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]

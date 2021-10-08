@@ -10,9 +10,14 @@ pub enum Query {
 #[derive(Debug, Clone)]
 pub struct Select {
     pub sub_queries: Vec<(String, Select)>,
+    pub streams: Vec<Stream>,
+    pub post_process: Vec<PostProcessItem>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Stream {
     pub source: SelectSource,
     pub process: Vec<ProcessItem>,
-    pub post_process: Vec<PostProcessItem>,
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +54,7 @@ pub enum ProcessItem {
     Limit {
         num: usize,
     },
+    // Fold
 }
 
 #[derive(Debug, Clone)]

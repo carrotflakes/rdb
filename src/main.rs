@@ -1,64 +1,49 @@
+use std::collections::HashMap;
+
 use rdb::{
-    data::{Data, Type},
+    data::Data,
     engine::Engine,
     front::{
         print_table,
         yaml::{
             query::{parse_insert_from_yaml, parse_named_queries_from_yaml},
-            schema::parse_table_from_yaml,
+            schema::parse_schema_from_yaml,
         },
     },
-    query::{Expr, Insert, ProcessItem, Select, SelectSource},
-    schema,
+    query::{Expr, Insert, ProcessItem, Select, SelectSource, Stream},
     storage::Storage,
 };
 
 fn main() {
-    let schema = schema::Schema {
-        tables: vec![
-            schema::Table {
-                name: "user".to_string(),
-                columns: vec![
-                    schema::Column {
-                        name: "id".to_string(),
-                        dtype: Type::U64,
-                        default: None,
-                    },
-                    schema::Column {
-                        name: "name".to_string(),
-                        dtype: Type::String,
-                        default: None,
-                    },
-                    schema::Column {
-                        name: "email".to_string(),
-                        dtype: Type::String,
-                        default: None,
-                    },
-                ],
-                primary_key: Some(0),
-                constraints: Vec::new(),
-                indices: Vec::new(),
-            },
-            parse_table_from_yaml(
-                r"
-name: message
-columns:
--   name: id
-    type: u64
-    auto_increment: true
--   name: user_id
-    type: u64
--   name: text
-    type: string
-primary_key: id
-indices:
--   name:
-    columns: [user_id]
-            ",
-            )
-            .unwrap(),
-        ],
-    };
+    let schema = parse_schema_from_yaml(
+        r"
+tables:
+-   name: user
+    columns:
+    -   name: id
+        type: u64
+        auto_increment: true
+    -   name: name
+        type: string
+    -   name: email
+        type: string
+    primary_key: id
+-   name: message
+    columns:
+    -   name: id
+        type: u64
+        auto_increment: true
+    -   name: user_id
+        type: u64
+    -   name: text
+        type: string
+    primary_key: id
+    indices:
+    -   name:
+        columns: [user_id]
+    ",
+    )
+    .unwrap();
 
     // let mut s = rdb::storage::in_memory::InMemory::new();
     let filepath = "main.rdb";
@@ -109,17 +94,19 @@ indices:
 
     let query = Select {
         sub_queries: vec![],
-        source: SelectSource {
-            table_name: "user".to_string(),
-            keys: vec!["id".to_string()],
-            from: Some(vec![Data::U64(0)]),
-            to: Some(vec![Data::U64(100)]),
-        },
-        process: vec![ProcessItem::Select {
-            columns: vec![
-                ("id!".to_owned(), Expr::Column("id".to_owned())),
-                ("name!".to_owned(), Expr::Column("name".to_owned())),
-            ],
+        streams: vec![Stream {
+            source: SelectSource {
+                table_name: "user".to_string(),
+                keys: vec!["id".to_string()],
+                from: Some(vec![Data::U64(0)]),
+                to: Some(vec![Data::U64(100)]),
+            },
+            process: vec![ProcessItem::Select {
+                columns: vec![
+                    ("id!".to_owned(), Expr::Column("id".to_owned())),
+                    ("name!".to_owned(), Expr::Column("name".to_owned())),
+                ],
+            }],
         }],
         post_process: vec![],
     };
@@ -256,6 +243,7 @@ delete:
 ",
     )
     .unwrap();
+    let queries = queries.into_iter().collect::<HashMap<_, _>>();
 
     for q in [
         "select_messages",
@@ -271,7 +259,9 @@ delete:
     ] {
         println!("[{}]", q);
         let (cs, vs) = engine.execute_query(&queries[q]).unwrap();
-        print_table(&cs, &vs);
+        if !cs.is_empty() {
+            print_table(&cs, &vs);
+        }
     }
 
     engine.flush();

@@ -1,12 +1,27 @@
 use crate::{
     data::Type,
-    schema::{Column, Default, Index, Table},
+    schema::{Column, Default, Index, Schema, Table},
 };
 
 use super::string_to_data;
 
+pub fn parse_schema_from_yaml(src: &str) -> Result<Schema, serde_yaml::Error> {
+    let schema: mapping::Schema = serde_yaml::from_str(src)?;
+    Ok(Schema {
+        tables: schema
+            .tables
+            .into_iter()
+            .map(map_table)
+            .collect::<Result<_, _>>()?,
+    })
+}
+
 pub fn parse_table_from_yaml(src: &str) -> Result<Table, serde_yaml::Error> {
     let table: mapping::Table = serde_yaml::from_str(src)?;
+    map_table(table)
+}
+
+fn map_table(table: mapping::Table) -> Result<Table, serde_yaml::Error> {
     let columns: Vec<_> = table
         .columns
         .iter()
@@ -51,6 +66,12 @@ pub fn parse_table_from_yaml(src: &str) -> Result<Table, serde_yaml::Error> {
 
 mod mapping {
     use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub struct Schema {
+        pub tables: Vec<Table>,
+    }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]

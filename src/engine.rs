@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::{
     data::Data,
-    query::{self, ProcessItem, Query, Select},
+    query::{self, ProcessItem, Query, Select, Stream},
     schema::Schema,
     storage::Storage,
 };
@@ -30,14 +30,25 @@ impl<S: Storage> Engine<S> {
 
     pub fn execute_select(&self, select: &Select) -> Result<(Vec<String>, Vec<Data>), String> {
         let mut rows = vec![];
-        let appender: RowAppender<_> = {
-            let rows = unsafe { std::mem::transmute::<*mut Vec<Data>, &mut Vec<Data>>(&mut rows) };
-            Box::new(move |_, row| {
-                rows.extend(row);
-            })
-        };
 
-        let columns = self.scan(select, appender)?;
+        let columns = self.stream_columns(&select.streams[0]);
+        for stream in select.streams.iter().skip(1) {
+            if self.stream_columns(stream) != columns {
+                return Err(format!("streams have different columns"));
+            }
+        }
+
+        for stream in select.streams.iter() {
+            let appender: RowAppender<_> = {
+                let rows =
+                    unsafe { std::mem::transmute::<*mut Vec<Data>, &mut Vec<Data>>(&mut rows) };
+                Box::new(move |_, row| {
+                    rows.extend(row);
+                })
+            };
+
+            self.scan(stream, appender)?;
+        }
 
         Ok((columns, rows))
     }
@@ -139,33 +150,48 @@ impl<S: Storage> Engine<S> {
         Ok(())
     }
 
-    fn scan(&self, select: &Select, appender: RowAppender<S>) -> Result<Vec<String>, String> {
-        let table = if let Some((_, table)) = self.schema().get_table(&select.source.table_name) {
+    fn stream_columns(&self, stream: &Stream) -> Vec<String> {
+        let table = if let Some((_, table)) = self.schema().get_table(&stream.source.table_name) {
+            table
+        } else {
+            panic!("missing table");
+        };
+        let mut columns = table.columns.iter().map(|c| c.name.to_owned()).collect();
+
+        for p in &stream.process {
+            columns = select_process_item_column(self.schema(), p, &columns);
+        }
+
+        columns
+    }
+
+    fn scan(&self, stream: &Stream, appender: RowAppender<S>) -> Result<(), String> {
+        let table = if let Some((_, table)) = self.schema().get_table(&stream.source.table_name) {
             table
         } else {
             return Err(format!("missing table"));
         };
         let columns = table.columns.iter().map(|c| c.name.to_owned()).collect();
-        let (columns, mut appender) = build_excecutable_query_process(
+        let (_, mut appender) = build_excecutable_query_process(
             self.schema(),
             &self.storage,
             columns,
-            &select.process,
+            &stream.process,
             appender,
         );
 
         let source = self
             .storage
-            .source_index(&table.name, &select.source.keys)
+            .source_index(&table.name, &stream.source.keys)
             .unwrap();
-        let mut cursor = if let Some(from) = &select.source.from {
+        let mut cursor = if let Some(from) = &stream.source.from {
             self.storage.get_cursor_just(source, from)
         } else {
             self.storage.get_cursor_first(source)
         };
-        let end_check_columns = select.source.to.as_ref().map(|to| {
+        let end_check_columns = stream.source.to.as_ref().map(|to| {
             (
-                select
+                stream
                     .source
                     .keys
                     .iter()
@@ -192,7 +218,7 @@ impl<S: Storage> Engine<S> {
                 break;
             }
         }
-        Ok(columns)
+        Ok(())
     }
 }
 
