@@ -52,7 +52,8 @@ columns:
     type: string
 primary_key: id
 indices:
--   [user_id]
+-   name:
+    columns: [user_id]
             ",
             )
             .unwrap(),
@@ -67,26 +68,24 @@ indices:
     let mut s = rdb::storage::file::File::open(filepath);
     s.add_table(schema.tables[0].clone());
     s.add_table(schema.tables[1].clone());
-    dbg!(s
-        .add_row(
-            "user",
-            vec![
-                Data::U64(1),
-                Data::String("niko".to_string()),
-                Data::String("niko@oneshot.game".to_string())
-            ]
-        )
-        .unwrap());
-    dbg!(s
-        .add_row(
-            "user",
-            vec![
-                Data::U64(2),
-                Data::String("ralsei".to_string()),
-                Data::String("ralsei@deltarune.game".to_string())
-            ]
-        )
-        .unwrap());
+    s.add_row(
+        "user",
+        vec![
+            Data::U64(1),
+            Data::String("niko".to_string()),
+            Data::String("niko@oneshot.game".to_string()),
+        ],
+    )
+    .unwrap();
+    s.add_row(
+        "user",
+        vec![
+            Data::U64(2),
+            Data::String("ralsei".to_string()),
+            Data::String("ralsei@deltarune.game".to_string()),
+        ],
+    )
+    .unwrap();
     s.add_row(
         "message",
         vec![
@@ -237,6 +236,14 @@ select:
     -   skip: 2
     -   limit: 3
 ---
+name: select_index
+select:
+    source:
+        table: message
+        iterate:
+            over: [user_id]
+            just: ['1']
+---
 name: delete1
 delete:
     source:
@@ -258,6 +265,7 @@ delete:
         "select_with_filter",
         "select_etc",
         "select_skip_limit",
+        "select_index",
         "delete1",
         "select_messages",
     ] {

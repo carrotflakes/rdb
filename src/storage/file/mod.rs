@@ -1,4 +1,5 @@
 mod impl_btree;
+mod page;
 mod pager;
 
 use std::borrow::Borrow;
@@ -10,13 +11,10 @@ use crate::{
     storage::Storage,
 };
 
-use self::{
-    impl_btree::Meta,
-    pager::{PageRaw, Pager, PAGE_SIZE},
-};
+use self::{impl_btree::Meta, pager::Pager};
 
 pub struct File {
-    pager: Pager<Page>,
+    pager: Pager<page::Page>,
     schema: Schema,
     sources: Vec<Source>,
     auto_increment: u64,
@@ -26,11 +24,13 @@ pub struct Source {
     table_index: usize,
     page_index: usize,
     key_columns: Vec<String>,
+    key_column_indices: Vec<usize>,
     value_types: Vec<Type>,
     parent_source_index: Option<usize>,
     meta: Meta,
 }
 
+#[derive(Clone)]
 pub struct FileCursor {
     source_index: usize,
     btree_cursor: BTreeCursor,
@@ -63,6 +63,7 @@ impl Storage for File {
             } else {
                 vec![]
             },
+            key_column_indices: table.primary_key.iter().cloned().collect(),
             value_types: table.columns.iter().map(|c| c.dtype.clone()).collect(),
             parent_source_index: None,
             meta: Meta {
@@ -71,12 +72,7 @@ impl Storage for File {
                 } else {
                     Some(0)
                 },
-                value_size: table
-                    .columns
-                    .iter()
-                    .map(|c| c.dtype.size())
-                    .collect::<Option<Vec<usize>>>()
-                    .map(|ss| ss.into_iter().sum::<usize>()),
+                value_size: table.columns.iter().map(|c| c.dtype.size()).sum(),
             },
         });
 
@@ -92,11 +88,12 @@ impl Storage for File {
                 table_index: self.schema.tables.len(),
                 page_index,
                 key_columns: key_columns.iter().map(|c| c.name.clone()).collect(),
+                key_column_indices: cols.clone(),
                 value_types: vec![Type::U64],
                 parent_source_index: Some(source_index),
                 meta: Meta {
                     key_size: key_columns.iter().map(|c| c.dtype.size()).sum(),
-                    value_size: Type::U64.size(),
+                    value_size: Type::U64.size(), // TODO
                 },
             });
         }
@@ -141,9 +138,23 @@ impl Storage for File {
 
     fn cursor_get_row(&self, cursor: &Self::Cursor) -> Option<Vec<Data>> {
         let source = &self.sources[cursor.source_index];
-        self.pager
-            .cursor_get(&source.meta, &cursor.btree_cursor)
-            .map(|x| data_vec_from_bytes(&source.value_types, &x.1).unwrap())
+        let value = self.pager.cursor_get(&source.meta, &cursor.btree_cursor)?.1;
+        if let Some(parent_surce_index) = source.parent_source_index {
+            let source = &self.sources[parent_surce_index];
+            let btree_cursor = self
+                .pager
+                .find(&source.meta, source.page_index, &value)
+                .unwrap();
+            Some(
+                data_vec_from_bytes(
+                    &source.value_types,
+                    &self.pager.cursor_get(&source.meta, &btree_cursor)?.1,
+                )
+                .unwrap(),
+            )
+        } else {
+            Some(data_vec_from_bytes(&source.value_types, &value).unwrap())
+        }
     }
 
     fn cursor_advance(&self, cursor: &mut Self::Cursor) -> bool {
@@ -160,12 +171,90 @@ impl Storage for File {
 
     fn cursor_delete(&mut self, cursor: &mut Self::Cursor) -> bool {
         let source = &self.sources[cursor.source_index];
-        if let Some(btree_cursor) = self.pager.cursor_delete(&source.meta, &cursor.btree_cursor) {
-            cursor.btree_cursor = btree_cursor;
-            true
+        if let Some(parent_source_index) = source.parent_source_index {
+            let (_key, index) = self
+                .pager
+                .cursor_get(&source.meta, &cursor.btree_cursor)
+                .unwrap();
+            cursor.btree_cursor = self
+                .pager
+                .cursor_delete(&source.meta, &cursor.btree_cursor)
+                .unwrap();
+
+            let main_source = &self.sources[parent_source_index];
+            let btree_cursor = self
+                .pager
+                .find(&main_source.meta, main_source.page_index, &index)
+                .unwrap();
+
+            let (_key, value) = self
+                .pager
+                .cursor_get(&main_source.meta, &btree_cursor)
+                .unwrap();
+
+            // delete main
+            self.pager
+                .cursor_delete(&main_source.meta, &btree_cursor)
+                .unwrap();
+
+            let value = data_vec_from_bytes(&main_source.value_types, &value).unwrap();
+
+            // delete indices
+            for (source_index, source) in self.sources.iter().enumerate() {
+                if source.table_index != main_source.table_index
+                    || source_index == cursor.source_index
+                {
+                    continue;
+                }
+
+                let key: Vec<_> = source
+                    .key_column_indices
+                    .iter()
+                    .map(|i| value[*i].clone())
+                    .collect();
+                let key = data_vec_to_bytes(&key);
+                let cursor = self
+                    .pager
+                    .find(&source.meta, source.page_index, &key)
+                    .unwrap();
+                self.pager.cursor_delete(&source.meta, &cursor).unwrap();
+            }
         } else {
-            false
-        }
+            let (_key, value) = self
+                .pager
+                .cursor_get(&source.meta, &cursor.btree_cursor)
+                .unwrap();
+
+            // delete main
+            cursor.btree_cursor = self
+                .pager
+                .cursor_delete(&source.meta, &cursor.btree_cursor)
+                .unwrap();
+
+            let value = data_vec_from_bytes(&source.value_types, &value).unwrap();
+
+            // delete indices
+            let main_source = source;
+            for source in self.sources.iter() {
+                if source.table_index != main_source.table_index {
+                    continue;
+                }
+
+                let key: Vec<_> = source
+                    .key_column_indices
+                    .iter()
+                    .map(|i| value[*i].clone())
+                    .collect();
+                let key = data_vec_to_bytes(&key);
+                let cursor = self
+                    .pager
+                    .find(&source.meta, source.page_index, &key)
+                    .unwrap();
+                self.pager.cursor_delete(&source.meta, &cursor).unwrap();
+            }
+        };
+
+        true
     }
 
     fn cursor_update(&self, cursor: &mut Self::Cursor, data: Vec<Data>) -> bool {
@@ -173,44 +262,44 @@ impl Storage for File {
     }
 
     fn add_row(&mut self, table_name: &str, data: Vec<Data>) -> Result<(), String> {
-        let (i, table) = self.schema.get_table(table_name).unwrap();
-        let key_size = if let Some(primary_key) = table.primary_key {
-            table.columns[primary_key].dtype.size()
-        } else {
-            Some(0)
-        };
-        let value_size = table
-            .columns
-            .iter()
-            .map(|c| c.dtype.size())
-            .collect::<Option<Vec<usize>>>()
-            .map(|ss| ss.into_iter().sum::<usize>());
-        let meta = Meta {
-            key_size,
-            value_size,
-        };
-        let node_i = self.sources[i].page_index;
-        let key = if let Some(primary_key) = table.primary_key {
-            vec![data[primary_key].clone()]
-        } else {
-            vec![]
-        };
-        let key = data_vec_to_bytes(&key);
-        let value = data_vec_to_bytes(&data);
-        let r = self.pager.insert(&meta, node_i, &key, &value);
-        r
+        let (table_index, table) = self.schema.get_table(table_name).unwrap();
+
+        let index_value = vec![data[table.primary_key.unwrap()].clone()];
+
+        for source in self.sources.iter() {
+            if source.table_index != table_index {
+                continue;
+            }
+
+            let key: Vec<_> = source
+                .key_column_indices
+                .iter()
+                .map(|i| data[*i].clone())
+                .collect();
+            let key = data_vec_to_bytes(&key);
+
+            let value = if source.parent_source_index.is_some() {
+                data_vec_to_bytes(&index_value)
+            } else {
+                data_vec_to_bytes(&data)
+            };
+
+            self.pager
+                .insert(&source.meta, source.page_index, &key, &value)?; // !!!!
+        }
+        Ok(())
     }
 
     fn flush(&self) {
         #[allow(mutable_transmutes)]
-        let pager = unsafe { std::mem::transmute::<_, &mut Pager<Page>>(&self.pager) };
+        let pager = unsafe { std::mem::transmute::<_, &mut Pager<page::Page>>(&self.pager) };
         pager.save()
     }
 }
 
 impl File {
     pub fn open(filepath: &str) -> Self {
-        let mut pager = Pager::<Page>::open(filepath);
+        let mut pager = Pager::<page::Page>::open(filepath);
         if pager.size() == 0 {
             // initialize
             pager.get_mut(0);
@@ -223,7 +312,7 @@ impl File {
                 auto_increment: 1000,
             }
         } else {
-            let first_page: &Page = pager.get_ref(0);
+            let first_page: &page::Page = pager.get_ref(0);
             let schema = bincode::deserialize(&first_page.borrow()[..]).unwrap();
             dbg!(&schema);
             Self {
@@ -233,68 +322,6 @@ impl File {
                 auto_increment: 1000,
             }
         }
-    }
-}
-
-pub struct Page {
-    raw: PageRaw,
-}
-
-impl From<PageRaw> for Page {
-    fn from(raw: PageRaw) -> Self {
-        Page { raw }
-    }
-}
-
-impl std::ops::Deref for Page {
-    type Target = PageRaw;
-
-    fn deref(&self) -> &Self::Target {
-        &self.raw
-    }
-}
-
-impl std::ops::DerefMut for Page {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.raw
-    }
-}
-
-impl std::fmt::Debug for Page {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for x in &self.raw {
-            write!(f, "{} ", x)?;
-        }
-        write!(f, "\n")
-    }
-}
-
-impl Page {
-    pub fn new_leaf() -> Self {
-        let mut page = Page::from([0; PAGE_SIZE as usize]);
-        page[0] = 1;
-        page
-    }
-    pub fn set_parent(&mut self, node_i: usize) {
-        self[1..1 + 4].copy_from_slice(&(node_i as u32).to_le_bytes());
-    }
-    pub fn set_size(&mut self, size: usize) {
-        self[1 + 4..1 + 4 + 2].copy_from_slice(&(size as u16).to_le_bytes());
-    }
-    pub fn set_next(&mut self, node_i: usize) {
-        self[1 + 4 + 2..1 + 4 + 2 + 4].copy_from_slice(&(node_i as u32).to_le_bytes());
-    }
-    #[inline]
-    pub fn slice(&self, offset: usize, size: usize) -> &[u8] {
-        &self[offset..offset + size]
-    }
-    #[inline]
-    pub fn slice_mut(&mut self, offset: usize, size: usize) -> &mut [u8] {
-        &mut self[offset..offset + size]
-    }
-    #[inline]
-    pub fn write(&mut self, offset: usize, bytes: &[u8]) {
-        self[offset..offset + bytes.len()].copy_from_slice(bytes);
     }
 }
 

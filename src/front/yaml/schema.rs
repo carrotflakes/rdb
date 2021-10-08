@@ -31,8 +31,10 @@ pub fn parse_table_from_yaml(src: &str) -> Result<Table, serde_yaml::Error> {
     let indices = table
         .indices
         .into_iter()
-        .map(|column_names| Index {
-            column_indices: column_names
+        .map(|index| Index {
+            name: index.name,
+            column_indices: index
+                .columns
                 .into_iter()
                 .map(|name| columns.iter().position(|c| c.name == name).unwrap())
                 .collect(),
@@ -57,7 +59,7 @@ mod mapping {
         pub columns: Vec<Column>,
         pub primary_key: Option<String>,
         #[serde(default)]
-        pub indices: Vec<Vec<String>>,
+        pub indices: Vec<Index>,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,5 +71,12 @@ mod mapping {
         pub default: Option<String>,
         #[serde(default)]
         pub auto_increment: bool,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub struct Index {
+        pub name: String,
+        pub columns: Vec<String>,
     }
 }

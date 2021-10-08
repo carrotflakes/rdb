@@ -43,6 +43,7 @@ pub enum Constraint {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Index {
+    pub name: String,
     pub column_indices: Vec<usize>,
 }
 
