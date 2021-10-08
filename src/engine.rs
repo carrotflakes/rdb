@@ -160,9 +160,27 @@ impl<S: Storage> Engine<S> {
             }
         }
 
-        dbg!(&rows);
+        let mut exprs: Vec<_> = table
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                if let Some(i) = update.column_names.iter().position(|n| n == &c.name) {
+                    match &update.exprs[i] {
+                        query::Expr::Column(name) => Expr::Column(
+                            update.column_names.iter().position(|n| n == name).unwrap(),
+                        ),
+                        query::Expr::Data(d) => Expr::Data(d.clone()),
+                        query::Expr::Enumerate(_) => todo!(),
+                    }
+                } else {
+                    Expr::Column(i)
+                }
+            })
+            .collect();
+            
         for row in rows {
-            // TODO modify row
+            let row = exprs.iter_mut().map(|e| e.eval(&row)).collect();
             self.storage.add_row(&table.name, row)?;
         }
 
@@ -393,12 +411,6 @@ fn process_item_appender<S: Storage>(
     schema: &Schema,
     storage: &S,
 ) -> Box<dyn FnMut(&mut QueryContext<S>, Vec<Data>)> {
-    enum Expr {
-        Column(usize),
-        Data(Data),
-        Enumerate(Data),
-    }
-
     let convert_expr = |expr: &query::Expr| -> Expr {
         match expr {
             query::Expr::Column(name) => {
@@ -409,26 +421,11 @@ fn process_item_appender<S: Storage>(
         }
     };
 
-    fn eval(expr: &mut Expr, row: &[Data]) -> Data {
-        match expr {
-            Expr::Column(i) => row[*i].clone(),
-            Expr::Data(d) => d.clone(),
-            Expr::Enumerate(data) => {
-                let ret = data.clone();
-                match data {
-                    Data::U64(v) => *v += 1,
-                    Data::String(_) => panic!(),
-                }
-                ret
-            }
-        }
-    }
-
     match p {
         ProcessItem::Select { columns: cs } => {
             let mut exprs: Vec<_> = cs.iter().map(|x| convert_expr(&x.1)).collect();
             Box::new(move |ctx, row| {
-                let row = exprs.iter_mut().map(|expr| eval(expr, &row)).collect();
+                let row = exprs.iter_mut().map(|expr| expr.eval(&row)).collect();
                 appender(ctx, row)
             })
         }
@@ -448,7 +445,7 @@ fn process_item_appender<S: Storage>(
                 for item in &mut items {
                     match item {
                         Item::Eq(left, right) => {
-                            if eval(left, &row) != eval(right, &row) {
+                            if left.eval(&row) != right.eval(&row) {
                                 return;
                             }
                         }
@@ -509,7 +506,7 @@ fn process_item_appender<S: Storage>(
         ProcessItem::AddColumn { expr, .. } => {
             let mut expr = convert_expr(expr);
             Box::new(move |ctx, mut row| {
-                let data = eval(&mut expr, &row);
+                let data = expr.eval(&row);
                 row.push(data);
                 appender(ctx, row);
             })
@@ -534,6 +531,29 @@ fn process_item_appender<S: Storage>(
                     count -= 1;
                 }
             })
+        }
+    }
+}
+
+enum Expr {
+    Column(usize),
+    Data(Data),
+    Enumerate(Data),
+}
+
+impl Expr {
+    fn eval(&mut self, row: &[Data]) -> Data {
+        match self {
+            Expr::Column(i) => row[*i].clone(),
+            Expr::Data(d) => d.clone(),
+            Expr::Enumerate(data) => {
+                let ret = data.clone();
+                match data {
+                    Data::U64(v) => *v += 1,
+                    Data::String(_) => panic!(),
+                }
+                ret
+            }
         }
     }
 }

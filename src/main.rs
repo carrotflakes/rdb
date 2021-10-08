@@ -238,10 +238,10 @@ update:
     table: message
     iterate:
         over: [id]
-        just: ['2']
+        from: ['5']
     columns:
-        user_id:
-            u64: 1
+        text:
+            string: I 💗 pancake
 ---
 name: delete1
 delete:
