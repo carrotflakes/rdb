@@ -3,7 +3,10 @@ use serde::Deserialize;
 use crate::{
     data::Data,
     front::yaml::{query::mapping::ProcessSelectColumn, string_to_data},
-    query::{Delete, Expr, FilterItem, Insert, ProcessItem, Query, Select, SelectSource, Stream},
+    query::{
+        Delete, Expr, FilterItem, Insert, ProcessItem, Query, Select, SelectSource,
+        SelectSourceTable, Stream,
+    },
 };
 
 pub fn parse_named_queries_from_yaml(src: &str) -> Result<Vec<(String, Query)>, serde_yaml::Error> {
@@ -88,35 +91,51 @@ pub fn map_select(select: mapping::Select) -> Result<Select, serde_yaml::Error> 
 }
 
 pub fn map_select_source(source: mapping::SelectSource) -> SelectSource {
-    match source.iterate {
-        mapping::SelectSourceIterate {
-            over,
-            from,
-            to,
-            just: None,
-        } => SelectSource {
-            table_name: source.table,
-            keys: over,
-            from: from.map(|x| x.into_iter().map(string_to_data).collect()),
-            to: to.map(|x| x.into_iter().map(string_to_data).collect()),
-        },
-        mapping::SelectSourceIterate {
-            over,
-            from: None,
-            to: None,
-            just: Some(just),
-        } => {
-            let just = Some(just.into_iter().map(string_to_data).collect());
-            SelectSource {
-                table_name: source.table,
+    match source {
+        mapping::SelectSource {
+            table: Some(table),
+            iterate: Some(iterate),
+            iota: None,
+        } => match iterate {
+            mapping::SelectSourceIterate {
+                over,
+                from,
+                to,
+                just: None,
+            } => SelectSource::Table(SelectSourceTable {
+                table_name: table,
                 keys: over,
-                from: just.clone(),
-                to: just,
+                from: from.map(|x| x.into_iter().map(string_to_data).collect()),
+                to: to.map(|x| x.into_iter().map(string_to_data).collect()),
+            }),
+            mapping::SelectSourceIterate {
+                over,
+                from: None,
+                to: None,
+                just: Some(just),
+            } => {
+                let just = Some(just.into_iter().map(string_to_data).collect());
+                SelectSource::Table(SelectSourceTable {
+                    table_name: table,
+                    keys: over,
+                    from: just.clone(),
+                    to: just,
+                })
             }
-        }
-        _ => {
-            panic!("unexpected iterate")
-        }
+            _ => {
+                panic!("unexpected iterate")
+            }
+        },
+        mapping::SelectSource {
+            table: None,
+            iterate: None,
+            iota: Some(iota),
+        } => SelectSource::Iota {
+            column_name: iota.column,
+            from: iota.from,
+            to: iota.to,
+        },
+        _ => panic!("invalid source"),
     }
 }
 
@@ -214,6 +233,7 @@ fn map_expr(expr: mapping::Expr) -> Expr {
         mapping::Expr::Column(column_name) => Expr::Column(column_name),
         mapping::Expr::String(string) => Expr::Data(Data::String(string)),
         mapping::Expr::U64(u64) => Expr::Data(Data::U64(u64)),
+        mapping::Expr::Enumerate(v) => Expr::Enumerate(Data::U64(v)),
     }
 }
 
@@ -263,10 +283,10 @@ mod mapping {
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
     pub struct SelectSource {
-        pub table: String,
-        pub iterate: SelectSourceIterate,
+        pub table: Option<String>,
+        pub iterate: Option<SelectSourceIterate>,
+        pub iota: Option<Iota>,
     }
-
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
     pub struct SelectSourceIterate {
@@ -274,6 +294,14 @@ mod mapping {
         pub from: Option<Vec<String>>,
         pub to: Option<Vec<String>>,
         pub just: Option<Vec<String>>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub struct Iota {
+        pub column: String,
+        pub from: u64,
+        pub to: u64,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -307,6 +335,7 @@ mod mapping {
         Column(String),
         String(String),
         U64(u64),
+        Enumerate(u64),
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]

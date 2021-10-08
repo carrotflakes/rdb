@@ -10,7 +10,7 @@ use rdb::{
             schema::parse_schema_from_yaml,
         },
     },
-    query::{Expr, Insert, ProcessItem, Select, SelectSource, Stream},
+    query::{Expr, Insert, ProcessItem, Select, SelectSource, SelectSourceTable, Stream},
     storage::Storage,
 };
 
@@ -95,12 +95,12 @@ tables:
     let query = Select {
         sub_queries: vec![],
         streams: vec![Stream {
-            source: SelectSource {
+            source: SelectSource::Table(SelectSourceTable {
                 table_name: "user".to_string(),
                 keys: vec!["id".to_string()],
                 from: Some(vec![Data::U64(0)]),
                 to: Some(vec![Data::U64(100)]),
-            },
+            }),
             process: vec![ProcessItem::Select {
                 columns: vec![
                     ("id!".to_owned(), Expr::Column("id".to_owned())),
@@ -240,6 +240,24 @@ delete:
             -   id
             from:
             -   '5'
+---
+name: etc
+select:
+    source:
+        iota:
+            column: i
+            from: 10
+            to: 15
+    process:
+    -   select:
+        -   name: a
+            from: i
+        -   name: b
+            from: i
+    -   add_column:
+            name: c
+            expr:
+                enumerate: 1
 ",
     )
     .unwrap();
@@ -256,6 +274,7 @@ delete:
         "select_index",
         "delete1",
         "select_messages",
+        "etc",
     ] {
         println!("[{}]", q);
         let (cs, vs) = engine.execute_query(&queries[q]).unwrap();

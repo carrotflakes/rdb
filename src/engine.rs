@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::{
     data::Data,
-    query::{self, ProcessItem, Query, Select, Stream},
+    query::{self, ProcessItem, Query, Select, SelectSource, Stream},
     schema::Schema,
     storage::Storage,
 };
@@ -67,24 +67,28 @@ impl<S: Storage> Engine<S> {
     }
 
     pub fn execute_delete(&mut self, delete: &query::Delete) -> Result<(), String> {
-        let table = if let Some((_, table)) = self.schema().get_table(&delete.source.table_name) {
+        let source_table = if let SelectSource::Table(table) = &delete.source {
+            table
+        } else {
+            return Err(format!("delete supports only to table"));
+        };
+        let table = if let Some((_, table)) = self.schema().get_table(&source_table.table_name) {
             table
         } else {
             return Err(format!("missing table"));
         };
         let source = self
             .storage
-            .source_index(&delete.source.table_name, &delete.source.keys)
+            .source_index(&source_table.table_name, &source_table.keys)
             .unwrap();
-        let mut cursor = if let Some(from) = &delete.source.from {
+        let mut cursor = if let Some(from) = &source_table.from {
             self.storage.get_cursor_just(source, from)
         } else {
             self.storage.get_cursor_first(source)
         };
-        let end_check_columns = delete.source.to.as_ref().map(|to| {
+        let end_check_columns = source_table.to.as_ref().map(|to| {
             (
-                delete
-                    .source
+                source_table
                     .keys
                     .iter()
                     .map(|name| table.get_column(name).unwrap().0)
@@ -151,12 +155,22 @@ impl<S: Storage> Engine<S> {
     }
 
     fn stream_columns(&self, stream: &Stream) -> Vec<String> {
-        let table = if let Some((_, table)) = self.schema().get_table(&stream.source.table_name) {
-            table
-        } else {
-            panic!("missing table");
+        let mut columns = match &stream.source {
+            SelectSource::Table(source_table) => {
+                let table =
+                    if let Some((_, table)) = self.schema().get_table(&source_table.table_name) {
+                        table
+                    } else {
+                        panic!("missing table");
+                    };
+                table.columns.iter().map(|c| c.name.to_owned()).collect()
+            }
+            SelectSource::Iota {
+                column_name,
+                from,
+                to,
+            } => vec![column_name.clone()],
         };
-        let mut columns = table.columns.iter().map(|c| c.name.to_owned()).collect();
 
         for p in &stream.process {
             columns = select_process_item_column(self.schema(), p, &columns);
@@ -166,58 +180,84 @@ impl<S: Storage> Engine<S> {
     }
 
     fn scan(&self, stream: &Stream, appender: RowAppender<S>) -> Result<(), String> {
-        let table = if let Some((_, table)) = self.schema().get_table(&stream.source.table_name) {
-            table
-        } else {
-            return Err(format!("missing table"));
-        };
-        let columns = table.columns.iter().map(|c| c.name.to_owned()).collect();
-        let (_, mut appender) = build_excecutable_query_process(
-            self.schema(),
-            &self.storage,
-            columns,
-            &stream.process,
-            appender,
-        );
+        match &stream.source {
+            SelectSource::Table(source_table) => {
+                let table =
+                    if let Some((_, table)) = self.schema().get_table(&source_table.table_name) {
+                        table
+                    } else {
+                        return Err(format!("missing table"));
+                    };
+                let columns = table.columns.iter().map(|c| c.name.to_owned()).collect();
+                let (_, mut appender) = build_excecutable_query_process(
+                    self.schema(),
+                    &self.storage,
+                    columns,
+                    &stream.process,
+                    appender,
+                );
 
-        let source = self
-            .storage
-            .source_index(&table.name, &stream.source.keys)
-            .unwrap();
-        let mut cursor = if let Some(from) = &stream.source.from {
-            self.storage.get_cursor_just(source, from)
-        } else {
-            self.storage.get_cursor_first(source)
-        };
-        let end_check_columns = stream.source.to.as_ref().map(|to| {
-            (
-                stream
-                    .source
-                    .keys
-                    .iter()
-                    .map(|name| table.get_column(name).unwrap().0)
-                    .collect::<Vec<_>>(),
-                to.clone(),
-            )
-        });
-        let mut ctx = QueryContext {
-            storage: &self.storage,
-            ended: false,
-        };
-        while !ctx.ended && !self.storage.cursor_is_end(&cursor) {
-            if let Some(row) = self.storage.cursor_get_row(&cursor) {
-                if let Some((cs, to)) = &end_check_columns {
-                    let now = cs.iter().map(|i| row[*i].clone()).collect::<Vec<_>>();
-                    if to < &now {
+                let source = self
+                    .storage
+                    .source_index(&table.name, &source_table.keys)
+                    .unwrap();
+                let mut cursor = if let Some(from) = &source_table.from {
+                    self.storage.get_cursor_just(source, from)
+                } else {
+                    self.storage.get_cursor_first(source)
+                };
+                let end_check_columns = source_table.to.as_ref().map(|to| {
+                    (
+                        source_table
+                            .keys
+                            .iter()
+                            .map(|name| table.get_column(name).unwrap().0)
+                            .collect::<Vec<_>>(),
+                        to.clone(),
+                    )
+                });
+                let mut ctx = QueryContext {
+                    storage: &self.storage,
+                    ended: false,
+                };
+                while !ctx.ended && !self.storage.cursor_is_end(&cursor) {
+                    if let Some(row) = self.storage.cursor_get_row(&cursor) {
+                        if let Some((cs, to)) = &end_check_columns {
+                            let now = cs.iter().map(|i| row[*i].clone()).collect::<Vec<_>>();
+                            if to < &now {
+                                break;
+                            }
+                        }
+                        appender(&mut ctx, row);
+                        self.storage.cursor_advance(&mut cursor);
+                    } else {
                         break;
                     }
                 }
-                appender(&mut ctx, row);
-                self.storage.cursor_advance(&mut cursor);
-            } else {
-                break;
+            }
+            SelectSource::Iota {
+                column_name,
+                from,
+                to,
+            } => {
+                let (_, mut appender) = build_excecutable_query_process(
+                    self.schema(),
+                    &self.storage,
+                    vec![column_name.clone()],
+                    &stream.process,
+                    appender,
+                );
+
+                let mut ctx = QueryContext {
+                    storage: &self.storage,
+                    ended: false,
+                };
+                for i in *from..*to {
+                    appender(&mut ctx, vec![Data::U64(i)]);
+                }
             }
         }
+
         Ok(())
     }
 }
@@ -301,6 +341,7 @@ fn process_item_appender<S: Storage>(
     enum Expr {
         Column(usize),
         Data(Data),
+        Enumerate(Data),
     }
 
     let convert_expr = |expr: &query::Expr| -> Expr {
@@ -309,39 +350,30 @@ fn process_item_appender<S: Storage>(
                 Expr::Column(pre_columns.iter().position(|x| x == name).unwrap())
             }
             query::Expr::Data(data) => Expr::Data(data.clone()),
+            query::Expr::Enumerate(data) => Expr::Enumerate(data.clone()),
         }
     };
 
-    fn eval(expr: &Expr, row: &[Data]) -> Data {
+    fn eval(expr: &mut Expr, row: &[Data]) -> Data {
         match expr {
             Expr::Column(i) => row[*i].clone(),
             Expr::Data(d) => d.clone(),
+            Expr::Enumerate(data) => {
+                let ret = data.clone();
+                match data {
+                    Data::U64(v) => *v += 1,
+                    Data::String(_) => panic!(),
+                }
+                ret
+            }
         }
     }
 
     match p {
         ProcessItem::Select { columns: cs } => {
-            enum Expr2 {
-                Column(usize),
-                Data(Data),
-            }
-            let exprs: Vec<_> = cs
-                .iter()
-                .map(|(_, expr)| match expr {
-                    query::Expr::Column(c) => {
-                        Expr2::Column(pre_columns.iter().position(|x| x == c).unwrap())
-                    }
-                    query::Expr::Data(d) => Expr2::Data(d.clone()),
-                })
-                .collect();
+            let mut exprs: Vec<_> = cs.iter().map(|x| convert_expr(&x.1)).collect();
             Box::new(move |ctx, row| {
-                let row = exprs
-                    .iter()
-                    .map(|e| match e {
-                        Expr2::Column(i) => row[*i].clone(),
-                        Expr2::Data(d) => d.clone(),
-                    })
-                    .collect();
+                let row = exprs.iter_mut().map(|expr| eval(expr, &row)).collect();
                 appender(ctx, row)
             })
         }
@@ -349,7 +381,7 @@ fn process_item_appender<S: Storage>(
             enum Item {
                 Eq(Expr, Expr),
             }
-            let items = items
+            let mut items = items
                 .iter()
                 .map(|item| match item {
                     query::FilterItem::Eq(left, right) => {
@@ -358,7 +390,7 @@ fn process_item_appender<S: Storage>(
                 })
                 .collect::<Vec<_>>();
             Box::new(move |ctx, row| {
-                for item in &items {
+                for item in &mut items {
                     match item {
                         Item::Eq(left, right) => {
                             if eval(left, &row) != eval(right, &row) {
@@ -420,9 +452,9 @@ fn process_item_appender<S: Storage>(
             })
         }
         ProcessItem::AddColumn { expr, .. } => {
-            let expr = convert_expr(expr);
+            let mut expr = convert_expr(expr);
             Box::new(move |ctx, mut row| {
-                let data = eval(&expr, &row);
+                let data = eval(&mut expr, &row);
                 row.push(data);
                 appender(ctx, row);
             })

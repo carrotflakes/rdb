@@ -21,7 +21,17 @@ pub struct Stream {
 }
 
 #[derive(Debug, Clone)]
-pub struct SelectSource {
+pub enum SelectSource {
+    Table(SelectSourceTable),
+    Iota {
+        column_name: String,
+        from: u64,
+        to: u64,
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SelectSourceTable {
     pub table_name: String,
     pub keys: Vec<String>,
     pub from: Option<Vec<Data>>,
@@ -66,6 +76,7 @@ pub enum FilterItem {
 pub enum Expr {
     Column(String),
     Data(Data),
+    Enumerate(Data),
 }
 
 #[derive(Debug, Clone)]
