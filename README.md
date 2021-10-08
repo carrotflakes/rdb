@@ -6,6 +6,7 @@
 - [ ] update
 - [ ] unique constraint
 - [ ] foreign key constraint
+- [ ] check constraint
 - [ ] drop table
 - [ ] alter table
 - [ ] auto increment
@@ -19,6 +20,7 @@
 - [ ] tcp connection
 - [ ] CLI
 - [ ] SQL
+- [ ] VM
 
 ``` yaml
 schema:

@@ -167,8 +167,23 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
         cursor: &BTreeCursor,
     ) -> Option<(K, V)> {
-        self.node_ref(cursor.node_i)
-            .cursor_get(meta, cursor.value_i)
+        let BTreeCursor {
+            mut node_i,
+            mut value_i,
+        } = cursor.clone();
+        // NOTE: 現在地がpage.size()を超えている可能性があるのでnext pageを探る
+        let mut node = self.node_ref(node_i);
+        while node.size(meta) <= value_i {
+            value_i = 0;
+            if let Some(next_node_i) = node.get_next(meta) {
+                node_i = next_node_i;
+            } else {
+                return None;
+            }
+            node = self.node_ref(node_i);
+        }
+
+        node.cursor_get(meta, cursor.value_i)
     }
 
     fn cursor_delete(
@@ -176,15 +191,17 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
         cursor: &BTreeCursor,
     ) -> Option<BTreeCursor> {
-        let node = self.node_mut(cursor.node_i);
-        if !node.cursor_delete(meta, cursor.value_i) {
-            return None;
+        let mut cursor = cursor.clone();
+        while self.node_ref(cursor.node_i).size(meta) <= cursor.value_i {
+            cursor = self.cursor_next(meta, &cursor);
         }
-        Some(if node.size(meta) <= cursor.value_i {
-            self.cursor_next(meta, cursor)
-        } else {
-            cursor.clone()
-        })
+        if !self
+            .node_mut(cursor.node_i)
+            .cursor_delete(meta, cursor.value_i)
+        {
+            panic!("something went wrong :(")
+        }
+        Some(cursor)
     }
 
     fn cursor_next(
@@ -216,6 +233,21 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
         cursor: &BTreeCursor,
     ) -> bool {
-        cursor.node_i == 0 || self.node_ref(cursor.node_i).size(meta) <= cursor.value_i
+        cursor.node_i == 0 || {
+            // TODO
+            let node = self.node_ref(cursor.node_i);
+            node.size(meta) <= cursor.value_i
+                && if let Some(next) = node.get_next(meta) {
+                    self.cursor_is_end(
+                        meta,
+                        &BTreeCursor {
+                            node_i: next,
+                            value_i: 0,
+                        },
+                    )
+                } else {
+                    true
+                }
+        }
     }
 }

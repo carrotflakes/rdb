@@ -7,7 +7,7 @@ use crate::{
 };
 
 pub trait Storage: 'static {
-    type Cursor;
+    type Cursor: std::fmt::Debug;
     type SourceIndex: Clone + Copy;
 
     fn schema(&self) -> &Schema;

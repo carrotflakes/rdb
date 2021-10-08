@@ -6,7 +6,9 @@ use rdb::{
     front::{
         print_table,
         yaml::{
-            query::{parse_insert_from_yaml, parse_named_queries_from_yaml},
+            query::{
+                parse_insert_from_yaml, parse_named_queries_from_yaml, parse_update_from_yaml,
+            },
             schema::parse_schema_from_yaml,
         },
     },
@@ -231,6 +233,16 @@ select:
             over: [user_id]
             just: ['1']
 ---
+name: update
+update:
+    table: message
+    iterate:
+        over: [id]
+        just: ['2']
+    columns:
+        user_id:
+            u64: 1
+---
 name: delete1
 delete:
     source:
@@ -272,6 +284,8 @@ select:
         "select_etc",
         "select_skip_limit",
         "select_index",
+        "update",
+        "select_messages",
         "delete1",
         "select_messages",
         "etc",
@@ -282,6 +296,18 @@ select:
             print_table(&cs, &vs);
         }
     }
+
+    parse_update_from_yaml(
+        r"
+table: hoge
+iterate:
+    over: [id]
+columns:
+    hoge:
+        u64: 1
+    ",
+    )
+    .unwrap();
 
     engine.flush();
 }

@@ -5,6 +5,7 @@ pub enum Query {
     Select(Select),
     Insert(Insert),
     Delete(Delete),
+    Update(Update),
 }
 
 #[derive(Debug, Clone)]
@@ -107,6 +108,8 @@ pub struct Delete {
 
 #[derive(Debug, Clone)]
 pub struct Update {
-    pub table_name: String,
-    // TODO
+    pub source: SelectSourceTable,
+    pub filter_items: Vec<FilterItem>,
+    pub column_names: Vec<String>,
+    pub exprs: Vec<Expr>,
 }

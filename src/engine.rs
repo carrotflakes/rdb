@@ -25,6 +25,7 @@ impl<S: Storage> Engine<S> {
             Query::Select(select) => self.execute_select(select),
             Query::Insert(insert) => self.execute_insert(insert).map(|_| (vec![], vec![])),
             Query::Delete(delete) => self.execute_delete(delete).map(|_| (vec![], vec![])),
+            Query::Update(update) => self.execute_update(update).map(|_| (vec![], vec![])),
         }
     }
 
@@ -111,6 +112,60 @@ impl<S: Storage> Engine<S> {
                 break;
             }
         }
+        Ok(())
+    }
+
+    pub fn execute_update(&mut self, update: &query::Update) -> Result<(), String> {
+        let table = if let Some((_, table)) = self.schema().get_table(&update.source.table_name) {
+            table.clone()
+        } else {
+            return Err(format!("missing table"));
+        };
+
+        let source = self
+            .storage
+            .source_index(&table.name, &update.source.keys)
+            .unwrap();
+        let mut cursor = if let Some(from) = &update.source.from {
+            self.storage.get_cursor_just(source, from)
+        } else {
+            self.storage.get_cursor_first(source)
+        };
+        let end_check_columns = update.source.to.as_ref().map(|to| {
+            (
+                update
+                    .source
+                    .keys
+                    .iter()
+                    .map(|name| table.get_column(name).unwrap().0)
+                    .collect::<Vec<_>>(),
+                to.clone(),
+            )
+        });
+
+        let mut rows = vec![];
+
+        while !self.storage.cursor_is_end(&cursor) {
+            if let Some(row) = self.storage.cursor_get_row(&cursor) {
+                if let Some((cs, to)) = &end_check_columns {
+                    let now = cs.iter().map(|i| row[*i].clone()).collect::<Vec<_>>();
+                    if to < &now {
+                        break;
+                    }
+                }
+                rows.push(row);
+                self.storage.cursor_delete(&mut cursor);
+            } else {
+                break;
+            }
+        }
+
+        dbg!(&rows);
+        for row in rows {
+            // TODO modify row
+            self.storage.add_row(&table.name, row)?;
+        }
+
         Ok(())
     }
 

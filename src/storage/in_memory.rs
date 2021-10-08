@@ -29,6 +29,7 @@ pub enum SourceRows {
     },
 }
 
+#[derive(Debug)]
 pub struct InMemoryCursor {
     source_index: usize,
     index: usize,

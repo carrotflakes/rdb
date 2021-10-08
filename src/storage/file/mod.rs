@@ -30,7 +30,7 @@ pub struct Source {
     meta: Meta,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FileCursor {
     source_index: usize,
     btree_cursor: BTreeCursor,
@@ -236,7 +236,9 @@ impl Storage for File {
             // delete indices
             let main_source = source;
             for source in self.sources.iter() {
-                if source.table_index != main_source.table_index {
+                if source.table_index != main_source.table_index
+                    || source.parent_source_index.is_none()
+                {
                     continue;
                 }
 

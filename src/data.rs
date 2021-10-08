@@ -2,6 +2,8 @@ use std::convert::TryInto;
 
 use serde::{Deserialize, Serialize};
 
+// I64, Date, Datetime, Time, Json
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Type {
     U64,

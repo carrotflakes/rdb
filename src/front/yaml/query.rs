@@ -5,7 +5,7 @@ use crate::{
     front::yaml::{query::mapping::ProcessSelectColumn, string_to_data},
     query::{
         Delete, Expr, FilterItem, Insert, ProcessItem, Query, Select, SelectSource,
-        SelectSourceTable, Stream,
+        SelectSourceTable, Stream, Update,
     },
 };
 
@@ -39,16 +39,21 @@ pub fn parse_delete_from_yaml(src: &str) -> Result<Delete, serde_yaml::Error> {
     map_delete(delete)
 }
 
+pub fn parse_update_from_yaml(src: &str) -> Result<Update, serde_yaml::Error> {
+    let update: mapping::Update = serde_yaml::from_str(src)?;
+    map_update(update)
+}
+
 fn map_query(query: mapping::Query) -> Result<Query, serde_yaml::Error> {
     Ok(match query {
         mapping::Query::Select(select) => Query::Select(map_select(select)?),
         mapping::Query::Insert(insert) => Query::Insert(map_insert(insert)?),
         mapping::Query::Delete(delete) => Query::Delete(map_delete(delete)?),
-        mapping::Query::Update() => todo!(),
+        mapping::Query::Update(update) => Query::Update(map_update(update)?),
     })
 }
 
-pub fn map_select(select: mapping::Select) -> Result<Select, serde_yaml::Error> {
+fn map_select(select: mapping::Select) -> Result<Select, serde_yaml::Error> {
     let streams = match select {
         mapping::Select {
             source: None,
@@ -90,7 +95,7 @@ pub fn map_select(select: mapping::Select) -> Result<Select, serde_yaml::Error> 
     })
 }
 
-pub fn map_select_source(source: mapping::SelectSource) -> SelectSource {
+fn map_select_source(source: mapping::SelectSource) -> SelectSource {
     match source {
         mapping::SelectSource {
             table: Some(table),
@@ -136,6 +141,34 @@ pub fn map_select_source(source: mapping::SelectSource) -> SelectSource {
             to: iota.to,
         },
         _ => panic!("invalid source"),
+    }
+}
+
+fn iterate_from_to(
+    select_source_iterate: mapping::SelectSourceIterate,
+) -> (Option<Vec<Data>>, Option<Vec<Data>>) {
+    match select_source_iterate {
+        mapping::SelectSourceIterate {
+            over: _,
+            from,
+            to,
+            just: None,
+        } => (
+            from.map(|x| x.into_iter().map(string_to_data).collect()),
+            to.map(|x| x.into_iter().map(string_to_data).collect()),
+        ),
+        mapping::SelectSourceIterate {
+            over: _,
+            from: None,
+            to: None,
+            just: Some(just),
+        } => {
+            let just = Some(just.into_iter().map(string_to_data).collect());
+            (just.clone(), just)
+        }
+        _ => {
+            panic!("unexpected iterate")
+        }
     }
 }
 
@@ -222,6 +255,29 @@ fn map_delete(delete: mapping::Delete) -> Result<Delete, serde_yaml::Error> {
     })
 }
 
+fn map_update(update: mapping::Update) -> Result<Update, serde_yaml::Error> {
+    let column_names = update.columns.iter().map(|x| x.0.clone()).collect();
+    let exprs = update
+        .columns
+        .iter()
+        .map(|x| map_expr(x.1.clone()))
+        .collect();
+    Ok(Update {
+        source: {
+            let (from, to) = iterate_from_to(update.iterate.clone());
+            SelectSourceTable {
+                table_name: update.table,
+                keys: update.iterate.over,
+                from,
+                to,
+            }
+        },
+        filter_items: update.filter.into_iter().map(map_filter_item).collect(),
+        column_names,
+        exprs,
+    })
+}
+
 fn map_filter_item(filter_item: mapping::FilterItem) -> FilterItem {
     match filter_item {
         mapping::FilterItem::Eq(left, right) => FilterItem::Eq(map_expr(left), map_expr(right)),
@@ -238,7 +294,7 @@ fn map_expr(expr: mapping::Expr) -> Expr {
 }
 
 mod mapping {
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
     use serde::{Deserialize, Serialize};
 
@@ -256,7 +312,7 @@ mod mapping {
         Select(Select),
         Insert(Insert),
         Delete(Delete),
-        Update(),
+        Update(Update),
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -366,5 +422,15 @@ mod mapping {
     #[serde(rename_all = "snake_case")]
     pub struct Delete {
         pub source: SelectSource,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub struct Update {
+        pub table: String,
+        pub iterate: SelectSourceIterate,
+        #[serde(default)]
+        pub filter: Vec<FilterItem>,
+        pub columns: BTreeMap<String, Expr>,
     }
 }
