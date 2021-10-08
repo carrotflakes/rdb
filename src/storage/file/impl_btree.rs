@@ -187,7 +187,7 @@ impl BTreeNode<Key, Value> for Page {
                 // check if insertable
                 let insert_data_size = key_size + INDEX_SIZE;
                 let remain_data_size = PAGE_SIZE as usize
-                    - (LEAF_HEADER_SIZE + key_size * (size - 1) + INDEX_SIZE * size);
+                    - (INTERNAL_HEADER_SIZE + key_size * (size - 1) + INDEX_SIZE * size);
                 if insert_data_size > remain_data_size {
                     return false;
                 }
@@ -195,7 +195,7 @@ impl BTreeNode<Key, Value> for Page {
                 // find insert index
                 let mut insert_index = size - 1;
                 for i in 0..size - 1 {
-                    let offset = LEAF_HEADER_SIZE + key_size * i;
+                    let offset = INTERNAL_HEADER_SIZE + key_size * i;
                     let k = &self[offset..offset + key_size];
                     if key.as_slice() < k {
                         insert_index = i;
@@ -204,9 +204,9 @@ impl BTreeNode<Key, Value> for Page {
                 }
 
                 // move forward keys and values
-                let key_offset = LEAF_HEADER_SIZE + key_size * insert_index;
+                let key_offset = INTERNAL_HEADER_SIZE + key_size * insert_index;
                 self.copy_within(
-                    key_offset..LEAF_HEADER_SIZE + key_size * (size - 1),
+                    key_offset..INTERNAL_HEADER_SIZE + key_size * (size - 1),
                     key_offset + key_size,
                 );
                 let values_end = PAGE_SIZE as usize - value_size * size;
@@ -237,7 +237,7 @@ impl BTreeNode<Key, Value> for Page {
                 // TODO: binary search
                 let value_size = 4;
                 for i in 0..size - 1 {
-                    let offset = LEAF_HEADER_SIZE + key_size * i;
+                    let offset = INTERNAL_HEADER_SIZE + key_size * i;
                     let k = &self[offset..offset + key_size];
                     if key.as_slice() < k {
                         let offset = PAGE_SIZE as usize - value_size * (i + 1);
@@ -293,7 +293,7 @@ impl BTreeNode<Key, Value> for Page {
         match meta.key_size {
             Some(0) => todo!(),
             Some(key_size) => {
-                self[LEAF_HEADER_SIZE..LEAF_HEADER_SIZE + key_size].copy_from_slice(key);
+                self.slice_mut(INTERNAL_HEADER_SIZE, key_size).copy_from_slice(key);
                 self.slice_mut(PAGE_SIZE as usize - value_size, value_size)
                     .copy_from_slice(&(i1 as u32).to_le_bytes());
                 self.slice_mut(PAGE_SIZE as usize - value_size * 2, value_size)
