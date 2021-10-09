@@ -1,15 +1,17 @@
 mod impl_btree;
 mod page;
 mod pager;
+mod simple_store;
 mod summary;
-
-use std::borrow::Borrow;
 
 use crate::{
     btree::{BTree, BTreeCursor},
     data::{data_vec_from_bytes, data_vec_to_bytes, Data, Type},
     schema::Schema,
-    storage::Storage,
+    storage::{
+        file::simple_store::{init_as_simple_store, read_object, write_object},
+        Storage,
+    },
 };
 
 use self::{impl_btree::Meta, pager::Pager};
@@ -46,16 +48,8 @@ impl Storage for File {
     }
 
     fn add_table(&mut self, table: crate::schema::Table) {
-        let page = &mut self.pager.get_mut(0)[..];
-        if bincode::serialized_size(&self.schema).unwrap() <= page.len() as u64 {
-            dbg!(bincode::serialize_into(page, &self.schema)).unwrap();
-        } else {
-            panic!("schema is too large")
-        }
-
         let source_index = self.sources.len();
         let page_index = self.pager.add_root_node();
-        self.pager.ensure_page(page_index); // FIXME
         self.sources.push(Source {
             table_index: self.schema.tables.len(),
             page_index,
@@ -84,7 +78,6 @@ impl Storage for File {
                 .map(|ci| &table.columns[*ci])
                 .collect::<Vec<_>>();
             let page_index = self.pager.add_root_node();
-            self.pager.ensure_page(page_index); // FIXME
             self.sources.push(Source {
                 table_index: self.schema.tables.len(),
                 page_index,
@@ -98,8 +91,9 @@ impl Storage for File {
                 },
             });
         }
-
+        
         self.schema.tables.push(table);
+        self.write_schema();
     }
 
     fn issue_auto_increment(&mut self, table_name: &str, column_name: &str) -> u64 {
@@ -306,18 +300,20 @@ impl File {
         let mut pager = Pager::<page::Page>::open(filepath);
         if pager.size() == 0 {
             // initialize
-            pager.get_mut(0);
+            let schema = Schema::new_empty();
+            init_as_simple_store(&mut pager);
+            write_object(&mut pager, "schema", &schema);
+
             // TODO write file header
             // 0x1006 <storage format>
             Self {
                 pager,
-                schema: Schema::new_empty(),
+                schema,
                 sources: vec![],
                 auto_increment: 1000,
             }
         } else {
-            let first_page: &page::Page = pager.get_ref(0);
-            let schema = bincode::deserialize(&first_page.borrow()[..]).unwrap();
+            let schema = read_object(&mut pager, "schema").unwrap();
             dbg!(&schema);
             Self {
                 pager,
@@ -326,6 +322,10 @@ impl File {
                 auto_increment: 1000,
             }
         }
+    }
+
+    pub fn write_schema(&mut self) {
+        write_object(&mut self.pager, "schema", &self.schema);
     }
 }
 
