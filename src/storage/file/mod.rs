@@ -1,6 +1,7 @@
 mod impl_btree;
 mod page;
 mod pager;
+mod summary;
 
 use std::borrow::Borrow;
 
@@ -159,8 +160,9 @@ impl Storage for File {
 
     fn cursor_advance(&self, cursor: &mut Self::Cursor) -> bool {
         let source = &self.sources[cursor.source_index];
-        let c = self.pager.cursor_next(&source.meta, &cursor.btree_cursor);
-        cursor.btree_cursor = c;
+        cursor.btree_cursor = self
+            .pager
+            .cursor_next(&source.meta, cursor.btree_cursor.clone());
         true
     }
 

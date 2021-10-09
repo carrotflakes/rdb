@@ -309,5 +309,7 @@ columns:
     )
     .unwrap();
 
+    engine.storage().print_summary();
+
     engine.flush();
 }

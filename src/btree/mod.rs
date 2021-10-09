@@ -193,7 +193,7 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
     ) -> Option<BTreeCursor> {
         let mut cursor = cursor.clone();
         while self.node_ref(cursor.node_i).size(meta) <= cursor.value_i {
-            cursor = self.cursor_next(meta, &cursor);
+            cursor = self.cursor_next(meta, cursor);
         }
         if !self
             .node_mut(cursor.node_i)
@@ -207,7 +207,7 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
     fn cursor_next(
         &self,
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
-        cursor: &BTreeCursor,
+        cursor: BTreeCursor,
     ) -> BTreeCursor {
         let BTreeCursor {
             mut node_i,
@@ -249,5 +249,25 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
                     true
                 }
         }
+    }
+
+    fn next_occupied(
+        &self,
+        meta: &<Self::Node as BTreeNode<K, V>>::Meta,
+        mut cursor: BTreeCursor,
+    ) -> BTreeCursor {
+        let mut node = self.node_ref(cursor.node_i);
+        while node.size(meta) <= cursor.value_i {
+            if let Some(next_node_i) = node.get_next(meta) {
+                cursor = BTreeCursor {
+                    node_i: next_node_i,
+                    value_i: 0,
+                };
+                node = self.node_ref(next_node_i);
+            } else {
+                break;
+            }
+        }
+        cursor
     }
 }
