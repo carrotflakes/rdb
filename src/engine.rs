@@ -20,6 +20,10 @@ impl<S: Storage> Engine<S> {
         self.storage.schema()
     }
 
+    pub fn storage(&self) -> &S {
+        &self.storage
+    }
+
     pub fn execute_query(&mut self, query: &Query) -> Result<(Vec<String>, Vec<Data>), String> {
         match query {
             Query::Select(select) => self.execute_select(select),
@@ -178,7 +182,7 @@ impl<S: Storage> Engine<S> {
                 }
             })
             .collect();
-            
+
         for row in rows {
             let row = exprs.iter_mut().map(|e| e.eval(&row)).collect();
             self.storage.add_row(&table.name, row)?;
@@ -551,6 +555,7 @@ impl Expr {
                 match data {
                     Data::U64(v) => *v += 1,
                     Data::String(_) => panic!(),
+                    Data::Lancer(size) => *size += 1,
                 }
                 ret
             }

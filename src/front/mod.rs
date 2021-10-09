@@ -13,6 +13,7 @@ pub fn print_table(column_names: &[String], values: &[Data]) {
         match v {
             Data::U64(v) => print!("{:?} ", v),
             Data::String(v) => print!("{:?} ", v),
+            Data::Lancer(size) => print!("<{}>", size),
         }
     }
     println!();

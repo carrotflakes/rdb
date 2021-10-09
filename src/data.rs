@@ -8,12 +8,14 @@ use serde::{Deserialize, Serialize};
 pub enum Type {
     U64,
     String,
+    Lancer,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum Data {
     U64(u64),
     String(String),
+    Lancer(u16),
 }
 
 impl Type {
@@ -21,6 +23,7 @@ impl Type {
         match self {
             Type::U64 => Some(8),
             Type::String => None,
+            Type::Lancer => None,
         }
     }
 }
@@ -30,6 +33,7 @@ impl Data {
         match self {
             Data::U64(_) => 8,
             Data::String(s) => s.as_bytes().len(),
+            Data::Lancer(size) => *size as usize,
         }
     }
 }
@@ -53,6 +57,11 @@ pub fn data_vec_from_bytes(types: &[Type], bytes: &[u8]) -> Option<Vec<Data>> {
                 ));
                 i += 2 + size;
             }
+            Type::Lancer => {
+                let size = parse_u16(&bytes[i..i + 2]) as usize;
+                vec.push(Data::Lancer(size as u16));
+                i += 2 + size;
+            }
         }
     }
     debug_assert_eq!(bytes.len(), i);
@@ -67,6 +76,10 @@ pub fn data_vec_to_bytes(datas: &[Data]) -> Vec<u8> {
             Data::String(s) => {
                 bytes.extend((s.len() as u16).to_le_bytes());
                 bytes.extend(s.as_bytes())
+            }
+            Data::Lancer(size) => {
+                bytes.extend(size.to_le_bytes());
+                bytes.extend((0..*size).map(|_| 0));
             }
         }
     }
@@ -87,10 +100,15 @@ fn test() {
     let datas = vec![
         Data::U64(123),
         Data::String("hello, わーるど😸".to_owned()),
+        Data::Lancer(10),
         Data::U64(321),
     ];
     let bytes = data_vec_to_bytes(&datas);
     dbg!(&bytes);
-    let decoded = data_vec_from_bytes(&vec![Type::U64, Type::String, Type::U64], &bytes).unwrap();
+    let decoded = data_vec_from_bytes(
+        &vec![Type::U64, Type::String, Type::Lancer, Type::U64],
+        &bytes,
+    )
+    .unwrap();
     assert_eq!(datas, decoded);
 }
