@@ -20,7 +20,6 @@ pub struct File {
     pager: Pager<page::Page>,
     schema: Schema,
     sources: Vec<Source>,
-    auto_increment: u64,
 }
 
 pub struct Source {
@@ -48,6 +47,7 @@ impl Storage for File {
     }
 
     fn add_table(&mut self, table: crate::schema::Table) {
+        // TODO: name duplication check
         let source_index = self.sources.len();
         let page_index = self.pager.add_root_node();
         self.sources.push(Source {
@@ -94,11 +94,6 @@ impl Storage for File {
 
         self.schema.tables.push(table);
         self.write_schema();
-    }
-
-    fn issue_auto_increment(&mut self, table_name: &str, column_name: &str) -> u64 {
-        self.auto_increment += 1;
-        self.auto_increment
     }
 
     fn source_index(&self, table_name: &str, key_columns: &[String]) -> Option<Self::SourceIndex> {
@@ -310,7 +305,6 @@ impl File {
                 pager,
                 schema,
                 sources: vec![],
-                auto_increment: 1000,
             }
         } else {
             let schema = read_object(&mut pager, "schema").unwrap();
@@ -319,7 +313,6 @@ impl File {
                 pager,
                 schema,
                 sources: vec![],
-                auto_increment: 1000,
             }
         }
     }

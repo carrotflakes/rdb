@@ -6,7 +6,6 @@ use super::Storage;
 pub struct InMemory {
     schema: Schema,
     tables: Vec<Source>,
-    auto_increment: u64,
 }
 
 #[derive(Debug)]
@@ -58,11 +57,6 @@ impl Storage for InMemory {
             },
         });
         self.schema.tables.push(table);
-    }
-
-    fn issue_auto_increment(&mut self, table_name: &str, column_name: &str) -> u64 {
-        self.auto_increment += 1;
-        self.auto_increment
     }
 
     fn source_index(&self, table_name: &str, key_columns: &[String]) -> Option<Self::SourceIndex> {
@@ -183,7 +177,6 @@ impl InMemory {
         InMemory {
             schema: Schema::new_empty(),
             tables: vec![],
-            auto_increment: 1000,
         }
     }
 }

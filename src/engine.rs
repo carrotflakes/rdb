@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::{
     data::Data,
     query::{self, ProcessItem, Query, Select, SelectSource, SelectSourceTable, Stream},
-    schema::Schema,
+    schema::{self, Schema},
     storage::Storage,
 };
 
@@ -22,6 +22,10 @@ impl<S: Storage> Engine<S> {
 
     pub fn storage(&self) -> &S {
         &self.storage
+    }
+
+    pub fn create_table(&mut self, table: schema::Table) {
+        self.storage.add_table(table);
     }
 
     pub fn execute_query(&mut self, query: &Query) -> Result<(Vec<String>, Vec<Data>), String> {
@@ -296,11 +300,7 @@ impl<S: Storage> Engine<S> {
                     };
                 table.columns.iter().map(|c| c.name.to_owned()).collect()
             }
-            SelectSource::Iota {
-                column_name,
-                from,
-                to,
-            } => vec![column_name.clone()],
+            SelectSource::Iota { column_name, .. } => vec![column_name.clone()],
         };
 
         for p in &stream.process {
