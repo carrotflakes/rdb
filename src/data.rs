@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 pub enum Type {
     U64,
     String,
+    OptionU64,
     Lancer,
 }
 
@@ -15,6 +16,7 @@ pub enum Type {
 pub enum Data {
     U64(u64),
     String(String),
+    OptionU64(Option<u64>),
     Lancer(u16),
 }
 
@@ -23,6 +25,7 @@ impl Type {
         match self {
             Type::U64 => Some(8),
             Type::String => None,
+            Type::OptionU64 => Some(9),
             Type::Lancer => None,
         }
     }
@@ -33,7 +36,25 @@ impl Data {
         match self {
             Data::U64(_) => 8,
             Data::String(s) => s.as_bytes().len(),
+            Data::OptionU64(_) => 9,
             Data::Lancer(size) => *size as usize,
+        }
+    }
+}
+
+impl std::fmt::Display for Data {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Data::U64(v) => write!(f, "{:?}", v),
+            Data::String(v) => write!(f, "{:?}", v),
+            Data::OptionU64(v) => {
+                if let Some(v) = v {
+                    write!(f, "{:?}", v)
+                } else {
+                    write!(f, "null")
+                }
+            }
+            Data::Lancer(size) => write!(f, "<{}>", size),
         }
     }
 }
@@ -57,6 +78,14 @@ pub fn data_vec_from_bytes(types: &[Type], bytes: &[u8]) -> Option<Vec<Data>> {
                 ));
                 i += 2 + size;
             }
+            Type::OptionU64 => {
+                if bytes[i] == 0 {
+                    vec.push(Data::OptionU64(None));
+                } else {
+                    vec.push(Data::OptionU64(Some(parse_u64(&bytes[i + 1..i + 1 + 8]))));
+                }
+                i += 9;
+            }
             Type::Lancer => {
                 let size = parse_u16(&bytes[i..i + 2]) as usize;
                 vec.push(Data::Lancer(size as u16));
@@ -76,6 +105,14 @@ pub fn data_vec_to_bytes(datas: &[Data]) -> Vec<u8> {
             Data::String(s) => {
                 bytes.extend((s.len() as u16).to_le_bytes());
                 bytes.extend(s.as_bytes())
+            }
+            Data::OptionU64(v) => {
+                if let Some(v) = v {
+                    bytes.push(1);
+                    bytes.extend(v.to_le_bytes());
+                } else {
+                    bytes.extend([0; 9]);
+                }
             }
             Data::Lancer(size) => {
                 bytes.extend(size.to_le_bytes());

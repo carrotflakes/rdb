@@ -555,6 +555,11 @@ impl Expr {
                 match data {
                     Data::U64(v) => *v += 1,
                     Data::String(_) => panic!(),
+                    Data::OptionU64(v) => {
+                        if let Some(v) = v {
+                            *v += 1;
+                        }
+                    }
                     Data::Lancer(size) => *size += 1,
                 }
                 ret
