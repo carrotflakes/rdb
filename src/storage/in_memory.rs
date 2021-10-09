@@ -46,7 +46,11 @@ impl Storage for InMemory {
     fn add_table(&mut self, table: crate::schema::Table) {
         self.tables.push(Source {
             table_name: table.name.clone(),
-            key_columns: vec![table.columns[table.primary_key.unwrap_or(0)].name.clone()],
+            key_columns: table
+                .primary_key
+                .iter()
+                .map(|i| table.columns[*i].name.clone())
+                .collect(),
             keys: vec![],
             rows: SourceRows::Data {
                 columns_num: table.columns.len(),
@@ -55,9 +59,9 @@ impl Storage for InMemory {
         });
         self.schema.tables.push(table);
     }
-    
+
     fn issue_auto_increment(&mut self, table_name: &str, column_name: &str) -> u64 {
-        self.auto_increment +=1;
+        self.auto_increment += 1;
         self.auto_increment
     }
 

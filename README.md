@@ -2,6 +2,8 @@
 
 ## TODO
 
+### basic
+
 - [ ] operations
   - [x] select
   - [x] insert
@@ -15,25 +17,32 @@
     - [ ] change column name
     - [ ] change column type
     - [ ] change column allow null
+  - [ ] create index
+  - [ ] add constraint
+  - [ ] ...
 - [ ] BTree
 - [ ] pager
 - [ ] null
 - [ ] constraints
   - [ ] unique constraint
   - [ ] foreign key constraint
+    - [ ] RESTRICT, CASCADE, SET NULL, NO ACTION
   - [ ] check constraint
 - [ ] auto increment
-- [ ] explain
-- [ ] jarnal log
 - [ ] index
-- [ ] large data
-- [ ] multi thread
+- [ ] explain
 - [ ] tests
   - [ ] unit tests
-  - [ ] integration tests
   - [ ] monky test
 - [ ] benchmark
+
+### extra
+
 - [ ] tcp connection
+- [ ] transaction
+- [ ] logging
+- [ ] large data
+- [ ] multi thread
 - [ ] user management
 - [ ] CLI
 - [ ] SQL compatible interface

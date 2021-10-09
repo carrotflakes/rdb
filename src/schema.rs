@@ -11,7 +11,7 @@ pub struct Schema {
 pub struct Table {
     pub name: String,
     pub columns: Vec<Column>,
-    pub primary_key: Option<usize>,
+    pub primary_key: Vec<usize>,
     pub constraints: Vec<Constraint>,
     pub indices: Vec<Index>,
 }

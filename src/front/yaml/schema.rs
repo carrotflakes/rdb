@@ -42,7 +42,9 @@ fn map_table(table: mapping::Table) -> Result<Table, serde_yaml::Error> {
         .collect();
     let primary_key = table
         .primary_key
-        .map(|name| columns.iter().position(|c| c.name == name).unwrap());
+        .into_iter()
+        .map(|name| columns.iter().position(|c| c.name == name).unwrap())
+        .collect();
     let indices = table
         .indices
         .into_iter()
@@ -78,7 +80,7 @@ mod mapping {
     pub struct Table {
         pub name: String,
         pub columns: Vec<Column>,
-        pub primary_key: Option<String>,
+        pub primary_key: Vec<String>,
         #[serde(default)]
         pub indices: Vec<Index>,
     }

@@ -53,20 +53,20 @@ impl Storage for File {
         self.sources.push(Source {
             table_index: self.schema.tables.len(),
             page_index,
-            key_columns: if let Some(primary_key) = table.primary_key {
-                vec![table.columns[primary_key].name.clone()]
-            } else {
-                vec![]
-            },
+            key_columns: table
+                .primary_key
+                .iter()
+                .map(|i| table.columns[*i].name.clone())
+                .collect(),
             key_column_indices: table.primary_key.iter().cloned().collect(),
             value_types: table.columns.iter().map(|c| c.dtype.clone()).collect(),
             parent_source_index: None,
             meta: Meta {
-                key_size: if let Some(primary_key) = table.primary_key {
-                    table.columns[primary_key].dtype.size()
-                } else {
-                    Some(0)
-                },
+                key_size: table
+                    .primary_key
+                    .iter()
+                    .map(|i| table.columns[*i].dtype.size())
+                    .sum(),
                 value_size: table.columns.iter().map(|c| c.dtype.size()).sum(),
             },
         });
@@ -91,7 +91,7 @@ impl Storage for File {
                 },
             });
         }
-        
+
         self.schema.tables.push(table);
         self.write_schema();
     }
@@ -262,7 +262,7 @@ impl Storage for File {
     fn add_row(&mut self, table_name: &str, data: Vec<Data>) -> Result<(), String> {
         let (table_index, table) = self.schema.get_table(table_name).unwrap();
 
-        let index_value = vec![data[table.primary_key.unwrap()].clone()];
+        let index_value: Vec<_> = table.primary_key.iter().map(|i| data[*i].clone()).collect();
 
         for source in self.sources.iter() {
             if source.table_index != table_index {
@@ -335,7 +335,7 @@ fn test() {
     f.add_table(crate::schema::Table {
         name: "hey".to_owned(),
         columns: vec![],
-        primary_key: Some(0),
+        primary_key: vec![0],
         constraints: vec![],
         indices: vec![],
     });

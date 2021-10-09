@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use rdb::{
+    builtin_schema::new_auto_increment_table,
     data::Data,
     engine::Engine,
     front::{
@@ -29,7 +30,7 @@ tables:
         type: string
     -   name: email
         type: string
-    primary_key: id
+    primary_key: [id]
 -   name: message
     columns:
     -   name: id
@@ -39,7 +40,7 @@ tables:
         type: u64
     -   name: text
         type: string
-    primary_key: id
+    primary_key: [id]
     indices:
     -   name:
         columns: [user_id]
@@ -53,6 +54,7 @@ tables:
         println!("{:?} removed", filepath);
     };
     let mut s = rdb::storage::file::File::open(filepath);
+    s.add_table(new_auto_increment_table());
     s.add_table(schema.tables[0].clone());
     s.add_table(schema.tables[1].clone());
     s.add_row(
@@ -270,6 +272,28 @@ select:
             name: c
             expr:
                 enumerate: 1
+---
+name: select_all_ai
+select:
+    source:
+        table: auto_increment
+        iterate:
+            over: [table, column]
+---
+name: select_ai
+select:
+    source:
+        table: auto_increment
+        iterate:
+            over: [table, column]
+            just: ['auto_increment', 'id']
+---
+name: insert_ai
+insert:
+    table: auto_increment
+    row:
+        table: auto_increment
+        column: id
 ",
     )
     .unwrap();
@@ -289,6 +313,9 @@ select:
         "delete1",
         "select_messages",
         "etc",
+        "insert_ai",
+        "select_ai",
+        "select_all_ai",
     ] {
         println!("[{}]", q);
         let (cs, vs) = engine.execute_query(&queries[q]).unwrap();

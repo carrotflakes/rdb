@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::{
     data::Data,
-    query::{self, ProcessItem, Query, Select, SelectSource, Stream},
+    query::{self, ProcessItem, Query, Select, SelectSource, SelectSourceTable, Stream},
     schema::Schema,
     storage::Storage,
 };
@@ -208,7 +208,8 @@ impl<S: Storage> Engine<S> {
                     match default {
                         crate::schema::Default::Data(d) => d.clone(),
                         crate::schema::Default::AutoIncrement => {
-                            Data::U64(self.storage.issue_auto_increment(table_name, &column.name))
+                            self.auto_inc(table_name, &column.name)
+                            // Data::U64(self.storage.issue_auto_increment(table_name, &column.name))
                         }
                     }
                 } else {
@@ -217,6 +218,59 @@ impl<S: Storage> Engine<S> {
             })
             .collect();
         self.storage.add_row(&table_name, values)
+    }
+
+    fn auto_inc(&mut self, table_name: &str, column_name: &str) -> Data {
+        let select_source_table = SelectSourceTable {
+            table_name: "auto_increment".to_owned(),
+            keys: vec!["table".to_owned(), "column".to_owned()],
+            from: Some(vec![
+                Data::String(table_name.to_owned()),
+                Data::String(column_name.to_owned()),
+            ]),
+            to: Some(vec![
+                Data::String(table_name.to_owned()),
+                Data::String(column_name.to_owned()),
+            ]),
+        };
+        let (_, datas) = self
+            .execute_select(&Select {
+                sub_queries: vec![],
+                streams: vec![Stream {
+                    source: SelectSource::Table(select_source_table.clone()),
+                    process: vec![ProcessItem::Select {
+                        columns: vec![("num".to_owned(), query::Expr::Column("num".to_owned()))],
+                    }],
+                }],
+                post_process: vec![],
+            })
+            .unwrap();
+        if datas.is_empty() {
+            self.execute_insert(&query::Insert::Row {
+                table_name: "auto_increment".to_owned(),
+                column_names: vec!["table".to_owned(), "column".to_owned(), "num".to_owned()],
+                values: vec![
+                    Data::String(table_name.to_owned()),
+                    Data::String(column_name.to_owned()),
+                    Data::U64(101),
+                ],
+            })
+            .unwrap();
+            Data::U64(100)
+        } else {
+            let data = datas[0].clone();
+            self.execute_update(&query::Update {
+                source: select_source_table,
+                filter_items: vec![],
+                column_names: vec!["num".to_owned()],
+                exprs: vec![query::Expr::Data(match &data {
+                    Data::U64(v) => Data::U64(v + 1),
+                    _ => panic!(),
+                })],
+            })
+            .unwrap();
+            data
+        }
     }
 
     fn execute_insert_from_select(

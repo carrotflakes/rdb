@@ -509,11 +509,133 @@ impl BTreeNode<Key, Value> for Page {
             Meta {
                 key_size: None,
                 value_size: Some(value_size),
-            } => todo!(),
+            } => {
+                // check if insertable
+                let last_value_offset = if size == 0 {
+                    PAGE_SIZE as usize
+                } else {
+                    parse_u16(&self.slice(LEAF_HEADER_SIZE + INDEX_SIZE * (size - 1), INDEX_SIZE))
+                        as usize
+                };
+
+                let insert_data_size = key.len() + *value_size;
+                let remain_data_size = last_value_offset - (LEAF_HEADER_SIZE + INDEX_SIZE * size);
+                if insert_data_size > remain_data_size {
+                    return false;
+                }
+
+                // find insert index
+                let mut last_offset = PAGE_SIZE as usize;
+                let mut insert_offset = last_value_offset;
+                let mut insert_index = size;
+                for i in 0..size {
+                    let offset =
+                        parse_u16(self.slice(LEAF_HEADER_SIZE + INDEX_SIZE * i, INDEX_SIZE))
+                            as usize;
+                    let k = &self[offset..last_offset - value_size];
+                    if key.as_slice() < k {
+                        insert_offset = offset;
+                        insert_index = i;
+                        break;
+                    }
+                    last_offset = insert_offset;
+                }
+
+                // recalculate key_index
+                for i in (insert_index..size).rev() {
+                    let slice_from = self.slice_mut(LEAF_HEADER_SIZE + INDEX_SIZE * i, INDEX_SIZE);
+                    let key_index = parse_u16(slice_from);
+                    let slice_to =
+                        self.slice_mut(LEAF_HEADER_SIZE + INDEX_SIZE * (i + 1), INDEX_SIZE);
+                    slice_to.copy_from_slice(&(key_index + insert_data_size as u16).to_le_bytes())
+                }
+                self.slice_mut(LEAF_HEADER_SIZE + INDEX_SIZE * insert_index, INDEX_SIZE)
+                    .copy_from_slice(
+                        &((insert_offset - value_size - key.len()) as u16).to_le_bytes(),
+                    );
+
+                // move forward keys and values
+                self.copy_within(
+                    last_value_offset..insert_offset,
+                    last_value_offset - insert_data_size,
+                );
+
+                // insert
+                self.slice_mut(insert_offset - value_size - key.len(), key.len())
+                    .copy_from_slice(key);
+                self[insert_offset - value_size..insert_offset].copy_from_slice(value);
+
+                true
+            }
             Meta {
                 key_size: None,
                 value_size: None,
-            } => todo!(),
+            } => {
+                let key_interval = INDEX_SIZE * 2;
+
+                // check if insertable
+                let last_value_offset = if size == 0 {
+                    PAGE_SIZE as usize
+                } else {
+                    parse_u16(&self.slice(LEAF_HEADER_SIZE + key_interval * (size - 1), INDEX_SIZE))
+                        as usize
+                };
+
+                let insert_data_size = key.len() + value.len();
+                let remain_data_size = last_value_offset - (LEAF_HEADER_SIZE + key_interval * size);
+                if insert_data_size > remain_data_size {
+                    return false;
+                }
+
+                // find insert index
+                let mut insert_offset = PAGE_SIZE as usize;
+                let mut insert_index = size;
+                for i in 0..size {
+                    let key_offset =
+                        parse_u16(self.slice(LEAF_HEADER_SIZE + key_interval * i, INDEX_SIZE))
+                            as usize;
+                    let value_offset = parse_u16(
+                        self.slice(LEAF_HEADER_SIZE + key_interval * i + INDEX_SIZE, INDEX_SIZE),
+                    ) as usize;
+                    let k = &self[key_offset..value_offset];
+                    if key.as_slice() < k {
+                        insert_index = i;
+                        break;
+                    }
+                    insert_offset = key_offset;
+                }
+
+                // recalculate key_index
+                for i in (insert_index * 2..size * 2).rev() {
+                    let slice_from = self.slice_mut(LEAF_HEADER_SIZE + INDEX_SIZE * i, INDEX_SIZE);
+                    let key_index = parse_u16(slice_from);
+                    let slice_to =
+                        self.slice_mut(LEAF_HEADER_SIZE + INDEX_SIZE * (i + 1), INDEX_SIZE);
+                    slice_to.copy_from_slice(&(key_index + insert_data_size as u16).to_le_bytes())
+                }
+                self.slice_mut(LEAF_HEADER_SIZE + key_interval * insert_index, INDEX_SIZE)
+                    .copy_from_slice(
+                        &((insert_offset - value.len() - key.len()) as u16).to_le_bytes(),
+                    );
+                self.slice_mut(
+                    LEAF_HEADER_SIZE + key_interval * insert_index + INDEX_SIZE,
+                    INDEX_SIZE,
+                )
+                .copy_from_slice(&((insert_offset - value.len()) as u16).to_le_bytes());
+
+                // move forward keys and values
+                self.copy_within(
+                    last_value_offset..insert_offset,
+                    last_value_offset - insert_data_size,
+                );
+
+                // insert
+                self.slice_mut(insert_offset - value.len() - key.len(), key.len())
+                    .copy_from_slice(key);
+                self[insert_offset - value.len()..insert_offset].copy_from_slice(value);
+
+                true
+            }
         };
         if res {
             // increment size
@@ -579,11 +701,39 @@ impl BTreeNode<Key, Value> for Page {
             Meta {
                 key_size: None,
                 value_size: Some(value_size),
-            } => todo!(),
+            } => {
+                let mut last_offset = PAGE_SIZE as usize;
+                for i in 0..size {
+                    let offset =
+                        parse_u16(self.slice(LEAF_HEADER_SIZE + INDEX_SIZE * i, INDEX_SIZE))
+                            as usize;
+                    let k = &self[offset..last_offset - value_size];
+                    if key.as_slice() <= k {
+                        return Some(i);
+                    }
+                    last_offset = offset;
+                }
+                Some(size)
+            }
             Meta {
                 key_size: None,
                 value_size: None,
-            } => todo!(),
+            } => {
+                let key_intarval = INDEX_SIZE * 2;
+                for i in 0..size {
+                    let key_index =
+                        parse_u16(self.slice(LEAF_HEADER_SIZE + key_intarval * i, INDEX_SIZE))
+                            as usize;
+                    let value_index = parse_u16(
+                        self.slice(LEAF_HEADER_SIZE + key_intarval * i + INDEX_SIZE, INDEX_SIZE),
+                    ) as usize;
+                    let k = &self[key_index..value_index];
+                    if key.as_slice() <= k {
+                        return Some(i);
+                    }
+                }
+                Some(size)
+            }
         }
     }
 
@@ -634,11 +784,47 @@ impl BTreeNode<Key, Value> for Page {
             Meta {
                 key_size: None,
                 value_size: Some(value_size),
-            } => todo!(),
+            } => {
+                let end_offset = if cursor == 0 {
+                    PAGE_SIZE as usize
+                } else {
+                    parse_u16(self.slice(LEAF_HEADER_SIZE + INDEX_SIZE * (cursor - 1), INDEX_SIZE))
+                        as usize
+                };
+                let start_offset =
+                    parse_u16(self.slice(LEAF_HEADER_SIZE + INDEX_SIZE * cursor, INDEX_SIZE))
+                        as usize;
+
+                let key = self[start_offset..end_offset - value_size].to_vec();
+                let value = self.slice(end_offset - value_size, *value_size).to_vec();
+
+                Some((key, value))
+            }
             Meta {
                 key_size: None,
                 value_size: None,
-            } => todo!(),
+            } => {
+                let key_interval = INDEX_SIZE * 2;
+                let key_index1 = if cursor == 0 {
+                    PAGE_SIZE as usize
+                } else {
+                    parse_u16(
+                        self.slice(LEAF_HEADER_SIZE + key_interval * (cursor - 1), INDEX_SIZE),
+                    ) as usize
+                };
+                let key_index2 =
+                    parse_u16(self.slice(LEAF_HEADER_SIZE + key_interval * cursor, INDEX_SIZE))
+                        as usize;
+                let value_index = parse_u16(self.slice(
+                    LEAF_HEADER_SIZE + key_interval * cursor + INDEX_SIZE,
+                    INDEX_SIZE,
+                )) as usize;
+
+                let key = self[key_index2..value_index].to_vec();
+                let value = self[value_index..key_index1].to_vec();
+
+                Some((key, value))
+            }
         }
     }
 
@@ -727,7 +913,43 @@ impl BTreeNode<Key, Value> for Page {
             Meta {
                 key_size: None,
                 value_size: None,
-            } => todo!(),
+            } => {
+                let key_interval = INDEX_SIZE * 2;
+
+                let last_value_offset = if size == 0 {
+                    PAGE_SIZE as usize
+                } else {
+                    parse_u16(&self.slice(LEAF_HEADER_SIZE + key_interval * (size - 1), INDEX_SIZE))
+                        as usize
+                };
+
+                let key_index1 = if cursor == 0 {
+                    PAGE_SIZE as u16
+                } else {
+                    parse_u16(
+                        self.slice(LEAF_HEADER_SIZE + key_interval * (cursor - 1), INDEX_SIZE),
+                    )
+                };
+                let key_index2 =
+                    parse_u16(self.slice(LEAF_HEADER_SIZE + key_interval * cursor, INDEX_SIZE));
+
+                // recalculate key_index
+                for i in (cursor + 1) * 2..size * 2 {
+                    let slice_from = self.slice_mut(LEAF_HEADER_SIZE + INDEX_SIZE * i, INDEX_SIZE);
+                    let key_index = parse_u16(slice_from);
+                    let slice_to =
+                        self.slice_mut(LEAF_HEADER_SIZE + INDEX_SIZE * (i - 1), INDEX_SIZE);
+                    slice_to.copy_from_slice(&(key_index - (key_index1 - key_index2)).to_le_bytes())
+                }
+
+                // move forward keys and values
+                self.copy_within(
+                    last_value_offset..key_index2 as usize,
+                    last_value_offset - (key_index1 - key_index2) as usize,
+                );
+
+                true
+            }
         };
         if res {
             // dencrement size
