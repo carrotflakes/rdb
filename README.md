@@ -1,26 +1,45 @@
 # Carrot flavored relational database
 
 ## TODO
+
+- [ ] operations
+  - [x] select
+  - [x] insert
+  - [x] delete
+  - [ ] update
+  - [ ] create table
+  - [ ] drop table
+  - [ ] alter table
+    - [ ] add column
+    - [ ] delete column
+    - [ ] change column name
+    - [ ] change column type
+    - [ ] change column allow null
+- [ ] BTree
+- [ ] pager
 - [ ] null
-- [ ] delete
-- [ ] update
-- [ ] unique constraint
-- [ ] foreign key constraint
-- [ ] check constraint
-- [ ] drop table
-- [ ] alter table
+- [ ] constraints
+  - [ ] unique constraint
+  - [ ] foreign key constraint
+  - [ ] check constraint
 - [ ] auto increment
 - [ ] explain
 - [ ] jarnal log
 - [ ] index
 - [ ] large data
-- [ ] unit tests
-- [ ] integration tests
+- [ ] multi thread
+- [ ] tests
+  - [ ] unit tests
+  - [ ] integration tests
+  - [ ] monky test
 - [ ] benchmark
 - [ ] tcp connection
+- [ ] user management
 - [ ] CLI
-- [ ] SQL
+- [ ] SQL compatible interface
 - [ ] VM
+
+## Notes
 
 ``` yaml
 schema:
