@@ -94,8 +94,7 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
                 } else {
                     new_node.insert_value(meta, key, value);
                 }
-                let next = self.insert_node(meta, node_i, &pivot_key, new_node)?;
-                self.node_mut(node_i).set_next(meta, next); // FIXME ルートノードにset_nextは不要
+                self.insert_node(meta, node_i, &pivot_key, new_node)?;
                 Ok(())
             }
         } else {
@@ -251,7 +250,7 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         }
     }
 
-    fn next_occupied(
+    fn cursor_next_occupied(
         &self,
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
         mut cursor: BTreeCursor,
