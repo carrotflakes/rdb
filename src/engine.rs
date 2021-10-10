@@ -75,7 +75,7 @@ impl<S: Storage> Engine<S> {
         }
     }
 
-    pub fn execute_delete(&mut self, delete: &query::Delete) -> Result<(), String> {
+    pub fn execute_delete(&mut self, delete: &query::Delete) -> Result<usize, String> {
         let source_table = if let SelectSource::Table(table) = &delete.source {
             table
         } else {
@@ -105,6 +105,7 @@ impl<S: Storage> Engine<S> {
                 to.clone(),
             )
         });
+        let mut count = 0;
         while !self.storage.cursor_is_end(&cursor) {
             if let Some(row) = self.storage.cursor_get_row(&cursor) {
                 if let Some((cs, to)) = &end_check_columns {
@@ -115,12 +116,14 @@ impl<S: Storage> Engine<S> {
                 }
                 // todo: filter here
                 self.storage.cursor_delete(&mut cursor);
+                self.storage.cursor_next_occupied(&mut cursor);
+                count +=1;
                 // self.storage.cursor_advance(&mut cursor);
             } else {
                 break;
             }
         }
-        Ok(())
+        Ok(count)
     }
 
     pub fn execute_update(&mut self, update: &query::Update) -> Result<(), String> {

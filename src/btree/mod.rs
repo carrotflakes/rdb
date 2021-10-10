@@ -64,6 +64,7 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         node_i: usize,
         key: &K,
     ) -> Option<BTreeCursor> {
+        assert_ne!(node_i, 0);
         let node = self.node_ref(node_i);
         if node.is_leaf(meta) {
             Some(BTreeCursor {
@@ -71,8 +72,11 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
                 value_i: node.find(meta, key)?,
             })
         } else {
-            let node_i = node.get_child(meta, key);
-            self.find(meta, node_i, key)
+            let child_node_i = node.get_child(meta, key);
+            if child_node_i == 0 {
+                dbg!(node.get_children(meta));
+            }
+            self.find(meta, child_node_i, key)
         }
     }
 
@@ -88,22 +92,35 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
             if self.node_mut(node_i).insert_value(meta, key, value) {
                 Ok(())
             } else {
+                let next_i = self.node_ref(node_i).get_next(meta);
                 let (pivot_key, mut new_node) = self.node_mut(node_i).split_out(meta);
                 if key < &pivot_key {
                     self.node_mut(node_i).insert_value(meta, key, value);
                 } else {
                     new_node.insert_value(meta, key, value);
                 }
-                self.insert_node(meta, node_i, &pivot_key, new_node)?;
+                let new_node_i = self.insert_node(meta, node_i, &pivot_key, new_node)?;
+                let node = self.node_mut(new_node_i);
+                if !node.is_leaf(meta) {
+                    panic!();
+                }
+                if node.is_leaf(meta) && next_i.is_some() {
+                    // is_leaf チェック必要?
+                    node.set_next(meta, next_i.unwrap());
+                }
                 Ok(())
             }
         } else {
-            let node_i = self.node_ref(node_i).get_child(meta, key);
-            debug_assert_ne!(node_i, 0);
-            self.insert(meta, node_i, key, value)
+            let child_node_i = self.node_ref(node_i).get_child(meta, key);
+            if child_node_i == 0 {
+                dbg!(self.node_ref(node_i).get_children(meta));
+            }
+            debug_assert_ne!(child_node_i, 0);
+            self.insert(meta, child_node_i, key, value)
         }
     }
 
+    // nodeをnode_iのnextのノードとして追加する
     fn insert_node(
         &mut self,
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
@@ -125,16 +142,20 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
                     self.node_mut(parent_i)
                         .insert_node(meta, key, inserted_node_i);
                     self.node_mut(inserted_node_i).set_parent(meta, parent_i);
-                    let i = self.insert_node(meta, parent_i, &pivot_key, new_node)?;
-                    self.reparent(meta, i);
+                    let parent2_i = self.insert_node(meta, parent_i, &pivot_key, new_node)?;
+                    self.reparent(meta, parent2_i);
                 } else {
                     new_node.insert_node(meta, key, inserted_node_i);
-                    let parent_i = self.insert_node(meta, parent_i, &pivot_key, new_node)?;
-                    self.node_mut(inserted_node_i).set_parent(meta, parent_i);
-                    self.reparent(meta, parent_i);
+                    let parent2_i = self.insert_node(meta, parent_i, &pivot_key, new_node)?;
+                    self.node_mut(inserted_node_i).set_parent(meta, parent2_i);
+                    self.reparent(meta, parent2_i);
                 }
             }
-            self.node_mut(node_i).set_next(meta, inserted_node_i);
+            let node = self.node_mut(node_i);
+            if node.is_leaf(meta) {
+                // is_leaf チェック必要?
+                node.set_next(meta, inserted_node_i);
+            }
             Ok(inserted_node_i)
         } else {
             // ルートノードのとき
@@ -144,7 +165,9 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
             {
                 let node_i1 = self.node_mut(i1);
                 node_i1.set_parent(meta, node_i);
-                node_i1.set_next(meta, i2);
+                if node_i1.is_leaf(meta) {
+                    node_i1.set_next(meta, i2);
+                }
             }
             self.node_mut(i2).set_parent(meta, node_i);
             self.node_mut(node_i)

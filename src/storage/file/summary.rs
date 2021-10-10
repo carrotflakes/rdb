@@ -32,15 +32,17 @@ impl File {
     fn print_page(&self, meta: &Meta, node_i: usize, indent: usize) {
         let ind = "  ".repeat(indent);
         let node = self.pager.node_ref(node_i);
+        let parent = node.get_parent(meta);
         if node.is_leaf(meta) {
             let next = node.get_next(meta);
-            println!("{}- leaf(size: {}, page: {}, next: {:?})", ind, node.size(meta), node_i, next);
+            println!("{}- leaf(size: {}, page: {}, next: {:?}, parent: {:?})", ind, node.size(meta), node_i, next, parent);
+            // dbg!(node.cursor_get(meta, 0).unwrap().0[0]);
         } else {
             println!(
-                "{}- internal(size: {}, page: {})",
+                "{}- internal(size: {}, page: {}, parent: {:?})",
                 ind,
                 node.size(meta),
-                node_i
+                node_i, parent
             );
             for node_i in node.get_children(meta) {
                 self.print_page(meta, node_i, indent + 1);
