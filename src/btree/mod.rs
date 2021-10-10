@@ -134,6 +134,7 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
                     self.reparent(meta, parent_i);
                 }
             }
+            self.node_mut(node_i).set_next(meta, inserted_node_i);
             Ok(inserted_node_i)
         } else {
             // ルートノードのとき

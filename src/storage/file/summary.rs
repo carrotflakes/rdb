@@ -33,7 +33,8 @@ impl File {
         let ind = "  ".repeat(indent);
         let node = self.pager.node_ref(node_i);
         if node.is_leaf(meta) {
-            println!("{}- leaf(size: {}, page: {})", ind, node.size(meta), node_i);
+            let next = node.get_next(meta);
+            println!("{}- leaf(size: {}, page: {}, next: {:?})", ind, node.size(meta), node_i, next);
         } else {
             println!(
                 "{}- internal(size: {}, page: {})",

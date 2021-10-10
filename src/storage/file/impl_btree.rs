@@ -118,7 +118,7 @@ impl BTreeNode<Key, Value> for Page {
                     let offset = LEAF_HEADER_SIZE + key_interval * to_size;
                     let pivot_key = self[offset..offset + key_size].to_vec();
 
-                    let offset = LEAF_HEADER_SIZE + key_interval * size + key_size;
+                    let offset = LEAF_HEADER_SIZE + key_interval * (size-1) + key_size;
                     let last_value_index = parse_u16(&self[offset..offset + INDEX_SIZE]) as usize;
                     let offset = LEAF_HEADER_SIZE + key_interval * (to_size - 1) + key_size; //?
                     let pivot_value_index = parse_u16(&self[offset..offset + INDEX_SIZE]) as usize;
@@ -258,13 +258,13 @@ impl BTreeNode<Key, Value> for Page {
                     key_offset + key_size,
                 );
                 let values_end = PAGE_SIZE as usize - value_size * size;
-                let value_offset = PAGE_SIZE as usize - value_size * insert_index;
+                let value_offset = PAGE_SIZE as usize - value_size * (insert_index + 1);
                 self.copy_within(values_end..value_offset, values_end - value_size);
 
                 // insert
                 self[key_offset..key_offset + key_size].copy_from_slice(key);
                 self[value_offset - value_size..value_offset]
-                    .copy_from_slice(&(node_i as u16).to_le_bytes());
+                    .copy_from_slice(&(node_i as u32).to_le_bytes());
             }
             None => {
                 // check if insertable
@@ -322,7 +322,7 @@ impl BTreeNode<Key, Value> for Page {
                 self.slice_mut(insert_offset - value_size - key.len(), key.len())
                     .copy_from_slice(key);
                 self[insert_offset - value_size..insert_offset]
-                    .copy_from_slice(&(node_i as u16).to_le_bytes());
+                    .copy_from_slice(&(node_i as u32).to_le_bytes());
             }
         };
         // increment size
