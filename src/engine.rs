@@ -152,7 +152,6 @@ impl<S: Storage> Engine<S> {
         });
 
         let mut rows = vec![];
-
         while !self.storage.cursor_is_end(&cursor) {
             if let Some(row) = self.storage.cursor_get_row(&cursor) {
                 if let Some((cs, to)) = &end_check_columns {
@@ -163,6 +162,7 @@ impl<S: Storage> Engine<S> {
                 }
                 rows.push(row);
                 self.storage.cursor_delete(&mut cursor);
+                // self.storage.cursor_next_occupied(&mut cursor);
             } else {
                 break;
             }
