@@ -213,6 +213,7 @@ impl Storage for File {
                 .unwrap();
 
             let value = main_source.build_value(&key, &value);
+            let pk = key;
 
             // delete indices
             for (source_index, source) in self.sources.iter().enumerate() {
@@ -228,10 +229,13 @@ impl Storage for File {
                     .map(|i| value[*i].clone())
                     .collect();
                 let key = data_vec_to_bytes(&key);
-                let cursor = self
+                let mut cursor = self
                     .pager
                     .find(&source.meta, source.page_index, &key)
                     .unwrap();
+                while self.pager.cursor_get(&source.meta, &cursor).unwrap().1 != pk {
+                    cursor = self.pager.cursor_next(&source.meta, cursor);
+                }
                 self.pager.cursor_delete(&source.meta, &cursor).unwrap();
             }
         } else {
@@ -247,6 +251,7 @@ impl Storage for File {
                 .unwrap();
 
             let value = source.build_value(&key, &value);
+            let pk = key;
 
             // delete indices
             let main_source = source;
@@ -263,10 +268,13 @@ impl Storage for File {
                     .map(|i| value[*i].clone())
                     .collect();
                 let key = data_vec_to_bytes(&key);
-                let cursor = self
+                let mut cursor = self
                     .pager
                     .find(&source.meta, source.page_index, &key)
                     .unwrap();
+                while self.pager.cursor_get(&source.meta, &cursor).unwrap().1 != pk {
+                    cursor = self.pager.cursor_next(&source.meta, cursor);
+                }
                 self.pager.cursor_delete(&source.meta, &cursor).unwrap();
             }
         };

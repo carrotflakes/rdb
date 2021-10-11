@@ -20,10 +20,15 @@ columns:
     type: string
 -   name: email
     type: string
+-   name: age
+    type: u64
+    default: '20'
 primary_key: [id]
 indices:
--   name: hoge
+-   name: name
     columns: [name]
+-   name: age
+    columns: [age]
 ",
     )
     .unwrap();
@@ -44,11 +49,12 @@ indices:
         engine
             .execute_insert(&Insert::Row {
                 table_name: "user".to_owned(),
-                column_names: vec!["id".to_owned(), "name".to_owned(), "email".to_owned()],
+                column_names: vec!["id".to_owned(), "name".to_owned(), "email".to_owned(), "age".to_owned()],
                 values: vec![
                     Data::U64(i as u64),
                     Data::String(format!("{}", rng.gen_range(1..100000))),
                     Data::String(format!("{}@example.com", rng.gen_range(1..100000))),
+                    Data::U64(rng.gen_range(1..100)),
                 ],
             })
             .unwrap();
@@ -96,6 +102,8 @@ indices:
     // delete all
     slice.shuffle(&mut rng);
     for i in slice.clone() {
+        dbg!(i);
+        //if i==2 {break;}
         let query = Delete {
             source: SelectSource::Table(SelectSourceTable {
                 table_name: "user".to_string(),

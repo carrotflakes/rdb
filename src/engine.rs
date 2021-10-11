@@ -165,7 +165,7 @@ impl<S: Storage> Engine<S> {
                 }
                 rows.push(row);
                 self.storage.cursor_delete(&mut cursor);
-                // self.storage.cursor_next_occupied(&mut cursor);
+                self.storage.cursor_next_occupied(&mut cursor);
             } else {
                 break;
             }

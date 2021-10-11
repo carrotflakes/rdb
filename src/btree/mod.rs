@@ -202,7 +202,7 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
                 node_i = next_node_i;
             } else {
                 return None;
-            }
+            }if node_i == 0 {panic!()}
             node = self.node_ref(node_i);
         }
 
@@ -216,7 +216,7 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
     ) -> Option<BTreeCursor> {
         let mut cursor = cursor.clone();
         while self.node_ref(cursor.node_i).size(meta) <= cursor.value_i {
-            cursor = self.cursor_next(meta, cursor);
+            cursor = self.cursor_next(meta, cursor);if cursor.node_i == 0 {panic!()}
         }
         if !self
             .node_mut(cursor.node_i)
@@ -241,6 +241,9 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         while node.size(meta) <= value_i {
             value_i = 0;
             if let Some(next_node_i) = node.get_next(meta) {
+                if next_node_i == 0 {
+                    panic!("reach end, node_i: {}", node_i);
+                }
                 node_i = next_node_i;
             } else {
                 node_i = 0;
