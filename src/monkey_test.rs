@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 use rand::{prelude::SliceRandom, Rng, SeedableRng};
 
 use crate::{builtin_schema::new_auto_increment_table, data::Data, engine::Engine, front::{

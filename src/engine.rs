@@ -117,7 +117,7 @@ impl<S: Storage> Engine<S> {
                 // todo: filter here
                 self.storage.cursor_delete(&mut cursor);
                 self.storage.cursor_next_occupied(&mut cursor);
-                count +=1;
+                count += 1;
                 // self.storage.cursor_advance(&mut cursor);
             } else {
                 break;
@@ -210,6 +210,9 @@ impl<S: Storage> Engine<S> {
             .iter()
             .map(|column| {
                 if let Some(i) = column_names.iter().position(|n| &column.name == n) {
+                    if let Some(crate::schema::Default::AutoIncrement) = &column.default {
+                        self.update_auto_inc(&table_name, &column_names[i], &values[i]);
+                    }
                     values[i].clone()
                 } else if let Some(default) = &column.default {
                     match default {
@@ -259,11 +262,11 @@ impl<S: Storage> Engine<S> {
                 values: vec![
                     Data::String(table_name.to_owned()),
                     Data::String(column_name.to_owned()),
-                    Data::U64(101),
+                    Data::U64(2),
                 ],
             })
             .unwrap();
-            Data::U64(100)
+            Data::U64(1)
         } else {
             let data = datas[0].clone();
             self.execute_update(&query::Update {
@@ -277,6 +280,67 @@ impl<S: Storage> Engine<S> {
             })
             .unwrap();
             data
+        }
+    }
+
+    fn update_auto_inc(&mut self, table_name: &str, column_name: &str, data: &Data) {
+        let select_source_table = SelectSourceTable {
+            table_name: "auto_increment".to_owned(),
+            keys: vec!["table".to_owned(), "column".to_owned()],
+            from: Some(vec![
+                Data::String(table_name.to_owned()),
+                Data::String(column_name.to_owned()),
+            ]),
+            to: Some(vec![
+                Data::String(table_name.to_owned()),
+                Data::String(column_name.to_owned()),
+            ]),
+        };
+
+        let (_, datas) = self
+            .execute_select(&Select {
+                sub_queries: vec![],
+                streams: vec![Stream {
+                    source: SelectSource::Table(select_source_table.clone()),
+                    process: vec![ProcessItem::Select {
+                        columns: vec![("num".to_owned(), query::Expr::Column("num".to_owned()))],
+                    }],
+                }],
+                post_process: vec![],
+            })
+            .unwrap();
+
+        let insert_num = match &data {
+            Data::U64(v) => *v,
+            _ => panic!(),
+        };
+
+        if datas.is_empty() {
+            self.execute_insert(&query::Insert::Row {
+                table_name: "auto_increment".to_owned(),
+                column_names: vec!["table".to_owned(), "column".to_owned(), "num".to_owned()],
+                values: vec![
+                    Data::String(table_name.to_owned()),
+                    Data::String(column_name.to_owned()),
+                    Data::U64(insert_num + 1),
+                ],
+            })
+            .unwrap();
+        } else {
+            let ai_num = match &datas[0] {
+                Data::U64(v) => *v,
+                _ => panic!(),
+            };
+
+            if ai_num < insert_num {
+                self.execute_update(&query::Update {
+                    source: select_source_table,
+                    filter_items: vec![],
+                    column_names: vec!["num".to_owned()],
+                    exprs: vec![query::Expr::Data(Data::U64(insert_num + 1))],
+                })
+                .unwrap();
+            }
         }
     }
 

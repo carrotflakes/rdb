@@ -202,7 +202,7 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
                 node_i = next_node_i;
             } else {
                 return None;
-            }if node_i == 0 {panic!()}
+            }
             node = self.node_ref(node_i);
         }
 
@@ -216,7 +216,7 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
     ) -> Option<BTreeCursor> {
         let mut cursor = cursor.clone();
         while self.node_ref(cursor.node_i).size(meta) <= cursor.value_i {
-            cursor = self.cursor_next(meta, cursor);if cursor.node_i == 0 {panic!()}
+            cursor = self.cursor_next(meta, cursor);
         }
         if !self
             .node_mut(cursor.node_i)
