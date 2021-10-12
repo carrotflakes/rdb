@@ -16,8 +16,8 @@ fn monkey_test() {
 name: user
 columns:
 -   name: id
-    type: u64
-    auto_increment: true
+    type: string
+    #auto_increment: true
 -   name: name
     type: string
 -   name: email
@@ -35,8 +35,8 @@ indices:
     )
     .unwrap();
 
-    let id_data = |i: u64| Data::U64(i);
-    // let id_data = |i: u64| Data::String(i.to_string());
+    // let id_data = |i: u64| Data::U64(i);
+    let id_data = |i: u64| Data::String(i.to_string());
 
     let filepath = "main.rdb";
     if let Ok(_) = std::fs::remove_file(filepath) {
@@ -46,7 +46,7 @@ indices:
     engine.create_table(new_auto_increment_table());
     engine.create_table(table);
 
-    let insert_num = 100usize;
+    let insert_num = 200usize;
 
     let mut slice: Vec<_> = (0..insert_num).collect();
     slice.shuffle(&mut rng);

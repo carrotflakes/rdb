@@ -65,9 +65,27 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         key: &K,
     ) -> (BTreeCursor, bool) {
         assert_ne!(node_i, 0);
-        let node = self.node_ref(node_i);
+        let mut node = self.node_ref(node_i);
         if node.is_leaf(meta) {
-            let (i, found) = node.find(meta, key);
+            let (mut i, mut found) = node.find(meta, key);
+            let mut node_i = node_i;
+            while node.size(meta) <= i {
+                if let Some(next_node_i) = node.get_next(meta) {
+                    node_i = next_node_i;
+                    node = self.node_ref(node_i);
+                    let r = node.find(meta, key);
+                    i = r.0;
+                    found = r.1;
+                } else {
+                    return (
+                        BTreeCursor {
+                            node_i: 0,
+                            value_i: 0,
+                        },
+                        false,
+                    );
+                }
+            }
             (BTreeCursor { node_i, value_i: i }, found)
         } else {
             let child_node_i = node.get_child(meta, key);

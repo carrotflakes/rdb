@@ -12,7 +12,7 @@ pub enum Type {
     Lancer,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Data {
     U64(u64),
     String(String),
@@ -39,6 +39,23 @@ impl Data {
             Data::OptionU64(_) => 9,
             Data::Lancer(size) => *size as usize,
         }
+    }
+}
+
+impl PartialOrd for Data {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        // match (self, other) {
+        //     (Data::U64(left), Data::U64(right)) => {
+        //         left.to_le_bytes().partial_cmp(&right.to_le_bytes())
+        //     },
+        //     (Data::String(left), Data::String(right)) => todo!(),
+        //     (Data::OptionU64(left), Data::OptionU64(right)) => todo!(),
+        //     (Data::Lancer(left), Data::Lancer(right)) => todo!(),
+        //     _ => panic!("different types are compared")
+        // }
+
+        // TODO: refine!
+        data_vec_to_bytes(&[self.clone()]).partial_cmp(&data_vec_to_bytes(&[other.clone()]))
     }
 }
 
