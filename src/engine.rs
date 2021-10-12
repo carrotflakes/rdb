@@ -404,6 +404,7 @@ impl<S: Storage> Engine<S> {
                 } else {
                     self.storage.get_cursor_first(source)
                 };
+                self.storage.cursor_next_occupied(&mut cursor); // get_cursor_justでページの最後を示すカーソルが返ってくる可能性がある
                 let end_check_columns = source_table.to.as_ref().map(|to| {
                     (
                         source_table

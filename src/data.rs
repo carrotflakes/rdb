@@ -93,7 +93,7 @@ pub fn data_vec_from_bytes(types: &[Type], bytes: &[u8]) -> Option<Vec<Data>> {
             }
         }
     }
-    debug_assert_eq!(bytes.len(), i);
+    debug_assert_eq!(bytes.len(), i, "length mismatched, bytes: {:?}", &bytes);
     Some(vec)
 }
 

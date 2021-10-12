@@ -35,6 +35,9 @@ indices:
     )
     .unwrap();
 
+    let id_data = |i: u64| Data::U64(i);
+    // let id_data = |i: u64| Data::String(i.to_string());
+
     let filepath = "main.rdb";
     if let Ok(_) = std::fs::remove_file(filepath) {
         println!("{:?} removed", filepath);
@@ -43,7 +46,7 @@ indices:
     engine.create_table(new_auto_increment_table());
     engine.create_table(table);
 
-    let insert_num = 200usize;
+    let insert_num = 100usize;
 
     let mut slice: Vec<_> = (0..insert_num).collect();
     slice.shuffle(&mut rng);
@@ -53,7 +56,7 @@ indices:
                 table_name: "user".to_owned(),
                 column_names: vec!["id".to_owned(), "name".to_owned(), "email".to_owned(), "age".to_owned()],
                 values: vec![
-                    Data::U64(i as u64),
+                    id_data(i as u64),
                     Data::String(format!("{}", rng.gen_range(1..100000))),
                     Data::String(format!("{}@example.com", rng.gen_range(1..100000))),
                     Data::U64(rng.gen_range(1..100)),
@@ -88,8 +91,8 @@ indices:
                 source: SelectSource::Table(SelectSourceTable {
                     table_name: "user".to_string(),
                     keys: vec!["id".to_string()],
-                    from: Some(vec![Data::U64(i as u64)]),
-                    to: Some(vec![Data::U64(i as u64)]),
+                    from: Some(vec![id_data(i as u64)]),
+                    to: Some(vec![id_data(i as u64)]),
                 }),
                 process: vec![],
             }],
@@ -110,8 +113,8 @@ indices:
             source: SelectSource::Table(SelectSourceTable {
                 table_name: "user".to_string(),
                 keys: vec!["id".to_string()],
-                from: Some(vec![Data::U64(i as u64)]),
-                to: Some(vec![Data::U64(i as u64)]),
+                from: Some(vec![id_data(i as u64)]),
+                to: Some(vec![id_data(i as u64)]),
             }),
             filter: vec![],
         };

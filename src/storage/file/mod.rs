@@ -55,6 +55,11 @@ impl Storage for File {
         let value_column_indices: Vec<_> = (0..table.columns.len())
             .filter(|x| !table.primary_key.contains(x))
             .collect();
+        let primary_key_types: Vec<_> = table
+            .primary_key
+            .iter()
+            .map(|i| table.columns[*i].dtype.clone())
+            .collect();
         self.sources.push(Source {
             table_index: self.schema.tables.len(),
             page_index,
@@ -65,11 +70,7 @@ impl Storage for File {
                 .collect(),
             key_column_indices: table.primary_key.clone(),
             value_column_indices: value_column_indices.clone(),
-            key_types: table
-                .primary_key
-                .iter()
-                .map(|i| table.columns[*i].dtype.clone())
-                .collect(),
+            key_types: primary_key_types.clone(),
             value_types: value_column_indices
                 .iter()
                 .map(|i| table.columns[*i].dtype.clone())
@@ -105,11 +106,11 @@ impl Storage for File {
                     .map(|i| table.columns[*i].dtype.clone())
                     .collect(),
                 key_columns: key_columns.iter().map(|c| c.name.clone()).collect(),
-                value_types: vec![Type::U64],
+                value_types: primary_key_types.clone(),
                 parent_source_index: Some(source_index),
                 meta: Meta {
                     key_size: key_columns.iter().map(|c| c.dtype.size()).sum(),
-                    value_size: Type::U64.size(), // TODO
+                    value_size: primary_key_types.iter().map(|t| t.size()).sum(),
                 },
             });
         }
@@ -139,12 +140,10 @@ impl Storage for File {
     fn get_cursor_just(&self, source_index: Self::SourceIndex, key: &Vec<Data>) -> Self::Cursor {
         let source = &self.sources[source_index];
         let key = data_vec_to_bytes(key);
+        let (btree_cursor, _found) = self.pager.find(&source.meta, source.page_index, &key);
         FileCursor {
             source_index,
-            btree_cursor: self
-                .pager
-                .find(&source.meta, source.page_index, &key)
-                .unwrap(),
+            btree_cursor,
         }
     }
 
@@ -153,10 +152,8 @@ impl Storage for File {
         let (key, value) = self.pager.cursor_get(&source.meta, &cursor.btree_cursor)?;
         let (key, value) = if let Some(parent_surce_index) = source.parent_source_index {
             source = &self.sources[parent_surce_index];
-            let btree_cursor = self
-                .pager
-                .find(&source.meta, source.page_index, &value)
-                .unwrap();
+            let (btree_cursor, found) = self.pager.find(&source.meta, source.page_index, &value);
+            assert!(found, "row is not found, index is broken?");
             self.pager.cursor_get(&source.meta, &btree_cursor)?
         } else {
             (key, value)
@@ -197,10 +194,10 @@ impl Storage for File {
                 .unwrap();
 
             let main_source = &self.sources[parent_source_index];
-            let btree_cursor = self
-                .pager
-                .find(&main_source.meta, main_source.page_index, &index)
-                .unwrap();
+            let (btree_cursor, found) =
+                self.pager
+                    .find(&main_source.meta, main_source.page_index, &index);
+            assert!(found, "row is not found, index is broken?");
 
             let (key, value) = self
                 .pager
@@ -229,10 +226,9 @@ impl Storage for File {
                     .map(|i| value[*i].clone())
                     .collect();
                 let key = data_vec_to_bytes(&key);
-                let mut cursor = self
-                    .pager
-                    .find(&source.meta, source.page_index, &key)
-                    .unwrap();
+                let (mut cursor, found) = self.pager.find(&source.meta, source.page_index, &key);
+                assert!(found, "index is broken?");
+
                 while self.pager.cursor_get(&source.meta, &cursor).unwrap().1 != pk {
                     cursor = self.pager.cursor_next(&source.meta, cursor);
                 }
@@ -268,10 +264,9 @@ impl Storage for File {
                     .map(|i| value[*i].clone())
                     .collect();
                 let key = data_vec_to_bytes(&key);
-                let mut cursor = self
-                    .pager
-                    .find(&source.meta, source.page_index, &key)
-                    .unwrap();
+                let (mut cursor, found) = self.pager.find(&source.meta, source.page_index, &key);
+                assert!(found, "index is broken?");
+
                 while self.pager.cursor_get(&source.meta, &cursor).unwrap().1 != pk {
                     cursor = self.pager.cursor_next(&source.meta, cursor);
                 }
