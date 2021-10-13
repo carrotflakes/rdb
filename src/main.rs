@@ -44,6 +44,22 @@ tables:
     indices:
     -   name:
         columns: [user_id]
+-   name: emoji
+    columns:
+    -   name: name
+        type: string
+    -   name: emoji
+        type: string
+    primary_key: [name]
+-   name: reaction
+    columns:
+    -   name: message_id
+        type: u64
+    -   name: user_id
+        type: u64
+    -   name: emoji_name
+        type: string
+    primary_key: [message_id, user_id]
     ",
     )
     .unwrap();
@@ -55,8 +71,9 @@ tables:
     };
     let mut s = rdb::storage::file::File::open(filepath);
     s.add_table(new_auto_increment_table());
-    s.add_table(schema.tables[0].clone());
-    s.add_table(schema.tables[1].clone());
+    for table in schema.tables.iter() {
+        s.add_table(table.clone());
+    }
     s.add_row(
         "user",
         vec![
@@ -156,8 +173,8 @@ select:
     process:
     - join:
         table: user
-        left_key: user_id
-        right_key: id
+        left_keys: [user_id]
+        right_keys: [id]
     - select:
         -   name: id
             from: id
@@ -166,6 +183,33 @@ select:
         -   name: user_name
             from: 'user.name'
 ---
+name: select_reactions
+select:
+    source:
+        table: reaction
+        iterate:
+            over: [message_id, user_id]
+    process:
+    - join:
+        table: user
+        left_keys: [user_id]
+        right_keys: [id]
+    - join:
+        table: message
+        left_keys: [message_id]
+        right_keys: [id]
+    - join:
+        table: emoji
+        left_keys: [emoji_name]
+        right_keys: [name]
+    - select:
+        -   name: text
+            from: 'message.text'
+        -   name: reaction_user_name
+            from: 'user.name'
+        -   name: emoji
+            from: 'emoji.emoji'
+---
 name: insert_user
 insert:
     table: user
@@ -173,6 +217,45 @@ insert:
         id: '3'
         name: echo
         email: echo
+---
+name: insert_emoji1
+insert:
+    table: emoji
+    row:
+        name: smile
+        emoji: 😸
+---
+name: insert_emoji2
+insert:
+    table: emoji
+    row:
+        name: sob
+        emoji: 😿
+---
+name: insert_reactions
+insert:
+    table: reaction
+    select:
+        source:
+            table: message
+            iterate:
+                over: [id]
+        process:
+        -   select:
+            -   name: message_id
+                from: id
+            -   name: user_id
+                value: '2'
+            -   name: emoji_name
+                value: smile
+---
+name: insert_reaction
+insert:
+    table: reaction
+    row:
+        message_id: '2'
+        user_id: '1'
+        emoji_name: sob
 ---
 name: insert_messages_from_select
 insert:
@@ -302,8 +385,13 @@ insert:
     for q in [
         "select_messages",
         "insert_user",
+        "insert_emoji1",
+        "insert_emoji2",
+        "insert_reactions",
+        "insert_reaction",
         "insert_messages_from_select",
         "select_messages",
+        "select_reactions",
         "select_with_filter",
         "select_etc",
         "select_skip_limit",

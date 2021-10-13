@@ -4,8 +4,8 @@ use crate::{
     data::Data,
     front::yaml::{query::mapping::ProcessSelectColumn, string_to_data},
     query::{
-        Delete, Expr, FilterItem, Insert, ProcessItem, Query, Select, SelectSource,
-        SelectSourceTable, Stream, Update,
+        Delete, Expr, FilterItem, Insert, PostProcessItem, ProcessItem, Query, Select,
+        SelectSource, SelectSourceTable, Stream, Update,
     },
 };
 
@@ -54,12 +54,18 @@ fn map_query(query: mapping::Query) -> Result<Query, serde_yaml::Error> {
 }
 
 fn map_select(select: mapping::Select) -> Result<Select, serde_yaml::Error> {
+    let post_process = select
+        .post_process
+        .iter()
+        .cloned()
+        .map(map_post_process_item)
+        .collect::<Result<_, _>>()?;
     let streams = match select {
         mapping::Select {
             source: None,
             process,
             streams: Some(streams),
-            post_process,
+            ..
         } => streams
             .into_iter()
             .map(|s| {
@@ -78,7 +84,7 @@ fn map_select(select: mapping::Select) -> Result<Select, serde_yaml::Error> {
             source: Some(source),
             process,
             streams: None,
-            post_process,
+            ..
         } => vec![Stream {
             source: map_select_source(source),
             process: process
@@ -91,7 +97,7 @@ fn map_select(select: mapping::Select) -> Result<Select, serde_yaml::Error> {
     Ok(Select {
         sub_queries: vec![],
         streams,
-        post_process: vec![],
+        post_process,
     })
 }
 
@@ -221,7 +227,7 @@ fn map_process_item(process_item: mapping::ProcessItem) -> Result<ProcessItem, s
                         value: None,
                     } => (name.clone(), Expr::Column(name)),
                     _ => {
-                        panic!("oops")
+                        panic!("invalid select column: {:?}", x)
                     }
                 })
                 .collect(),
@@ -231,12 +237,12 @@ fn map_process_item(process_item: mapping::ProcessItem) -> Result<ProcessItem, s
         },
         mapping::ProcessItem::Join {
             table,
-            left_key,
-            right_key,
+            left_keys,
+            right_keys,
         } => ProcessItem::Join {
             table_name: table,
-            left_key,
-            right_key,
+            left_keys,
+            right_keys,
         },
         mapping::ProcessItem::Distinct(column_name) => ProcessItem::Distinct { column_name },
         mapping::ProcessItem::AddColumn { name, expr } => ProcessItem::AddColumn {
@@ -245,6 +251,19 @@ fn map_process_item(process_item: mapping::ProcessItem) -> Result<ProcessItem, s
         },
         mapping::ProcessItem::Skip(num) => ProcessItem::Skip { num },
         mapping::ProcessItem::Limit(num) => ProcessItem::Limit { num },
+    })
+}
+
+fn map_post_process_item(
+    post_process_item: mapping::PostProcessItem,
+) -> Result<PostProcessItem, serde_yaml::Error> {
+    Ok(match post_process_item {
+        mapping::PostProcessItem::SortBy { column, order } => PostProcessItem::SortBy {
+            column_name: column,
+            ascent: matches!(order, mapping::SortOrder::Asc),
+        },
+        mapping::PostProcessItem::Skip { num } => PostProcessItem::Skip { num },
+        mapping::PostProcessItem::Limit { num } => PostProcessItem::Limit { num },
     })
 }
 
@@ -367,8 +386,8 @@ mod mapping {
         Filter(FilterItem),
         Join {
             table: String,
-            left_key: String,
-            right_key: String,
+            left_keys: Vec<String>,
+            right_keys: Vec<String>,
         },
         Distinct(String),
         AddColumn {
@@ -405,9 +424,16 @@ mod mapping {
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "snake_case")]
     pub enum PostProcessItem {
-        SortBy { column_name: String },
+        SortBy { column: String, order: SortOrder },
         Skip { num: usize },
         Limit { num: usize },
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum SortOrder {
+        Asc,
+        Desc,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]

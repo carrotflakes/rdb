@@ -204,7 +204,10 @@ impl<S: Storage> Engine<S> {
         column_names: &Vec<String>,
         values: &[Data],
     ) -> Result<(), String> {
-        let (_, table) = self.schema().get_table(table_name).unwrap();
+        let (_, table) = self
+            .schema()
+            .get_table(table_name)
+            .expect("table not found");
         let columns = table.columns.clone();
         let values = columns
             .iter()
@@ -582,30 +585,37 @@ fn process_item_appender<S: Storage>(
         }
         ProcessItem::Join {
             table_name,
-            left_key,
-            right_key,
+            left_keys,
+            right_keys,
         } => {
-            let left_i = post_columns.iter().position(|c| c == left_key).unwrap();
-            let (_, table) = schema.get_table(table_name).unwrap();
-            let right_i = table
-                .columns
+            let left_is: Vec<_> = left_keys
                 .iter()
-                .position(|c| &c.name == right_key)
-                .unwrap();
+                .map(|key| post_columns.iter().position(|c| c == key).unwrap())
+                .collect();
+            let (_, table) = schema.get_table(table_name).unwrap();
+            let right_is: Vec<_> = right_keys
+                .iter()
+                .map(|key| table.columns.iter().position(|c| &c.name == key).unwrap())
+                .collect();
             let source_index = storage
-                .source_index(table_name, &[right_key.clone()])
-                .unwrap(); // TODO!
+                .source_index(table_name, &right_keys)
+                .expect(&format!("{:?} are not found in {}", right_keys, table_name)); // TODO!
             Box::new(move |ctx, row| {
-                let mut cursor = ctx
-                    .storage
-                    .get_cursor_just(source_index, &vec![row[left_i].clone()]);
+                let mut cursor = ctx.storage.get_cursor_just(
+                    source_index,
+                    &left_is.iter().map(|i| row[*i].clone()).collect::<Vec<_>>(),
+                );
                 if ctx.storage.cursor_is_end(&cursor) {
                     return;
                 }
                 while {
                     !ctx.storage.cursor_is_end(&cursor)
                         && if let Some(append_row) = ctx.storage.cursor_get_row(&cursor) {
-                            if append_row[right_i] == row[left_i] {
+                            if left_is
+                                .iter()
+                                .zip(right_is.iter())
+                                .all(|(left, right)| row[*left] == append_row[*right])
+                            {
                                 let mut row_ = row.clone();
                                 row_.extend(append_row);
                                 appender(ctx, row_);

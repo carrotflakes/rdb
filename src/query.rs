@@ -28,7 +28,7 @@ pub enum SelectSource {
         column_name: String,
         from: u64,
         to: u64,
-    }
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -49,8 +49,8 @@ pub enum ProcessItem {
     },
     Join {
         table_name: String,
-        left_key: String,
-        right_key: String,
+        left_keys: Vec<String>,
+        right_keys: Vec<String>,
     },
     Distinct {
         column_name: String,
@@ -82,7 +82,7 @@ pub enum Expr {
 
 #[derive(Debug, Clone)]
 pub enum PostProcessItem {
-    SortBy { column_name: String },
+    SortBy { column_name: String, ascent: bool },
     Skip { num: usize },
     Limit { num: usize },
 }
