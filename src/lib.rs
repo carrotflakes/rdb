@@ -7,4 +7,5 @@ pub mod query;
 pub mod schema;
 pub mod storage;
 
+#[cfg(test)]
 pub mod monkey_test;

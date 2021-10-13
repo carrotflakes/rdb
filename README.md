@@ -23,6 +23,7 @@
 - [ ] BTree
 - [ ] pager
 - [ ] null
+- [ ] sub query
 - [ ] constraints
   - [ ] unique constraint
   - [ ] foreign key constraint

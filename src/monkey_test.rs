@@ -1,11 +1,12 @@
-#![allow(unused_imports)]
-
 use rand::{prelude::SliceRandom, Rng, SeedableRng};
 
-use crate::{builtin_schema::new_auto_increment_table, data::Data, engine::Engine, front::{
-        print_table,
-        yaml::{query::parse_named_queries_from_yaml, schema::parse_table_from_yaml},
-    }, query::{Delete, Insert, Select, SelectSource, SelectSourceTable, Stream}};
+use crate::{
+    builtin_schema::new_auto_increment_table,
+    data::Data,
+    engine::Engine,
+    front::{print_table, yaml::schema::parse_table_from_yaml},
+    query::{Delete, Insert, Select, SelectSource, SelectSourceTable, Stream},
+};
 
 #[test]
 fn monkey_test() {
@@ -54,7 +55,12 @@ indices:
         engine
             .execute_insert(&Insert::Row {
                 table_name: "user".to_owned(),
-                column_names: vec!["id".to_owned(), "name".to_owned(), "email".to_owned(), "age".to_owned()],
+                column_names: vec![
+                    "id".to_owned(),
+                    "name".to_owned(),
+                    "email".to_owned(),
+                    "age".to_owned(),
+                ],
                 values: vec![
                     id_data(i as u64),
                     Data::String(format!("{}", rng.gen_range(1..100000))),
@@ -103,7 +109,7 @@ indices:
         // dbg!(i);
         assert_eq!(vs.len() / cs.len(), 1);
     }
-    
+
     // delete all
     slice.shuffle(&mut rng);
     for i in slice.clone() {
@@ -121,7 +127,7 @@ indices:
         let count = engine.execute_delete(&query).unwrap();
         assert_eq!(count, 1);
     }
-    
+
     let query = Select {
         sub_queries: vec![],
         streams: vec![Stream {

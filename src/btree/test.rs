@@ -161,20 +161,20 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
         self.next = Some(i);
     }
 
-    fn first_cursor(&self, meta: &Self::Meta) -> usize {
-        0
-    }
-
-    fn find(&self, meta: &Self::Meta, key: &usize) -> Option<usize> {
+    fn find_cursor(&self, meta: &Self::Meta, key: &usize) -> (usize, bool) {
         if let Some(i) = self.keys.iter().position(|k| k >= key) {
             if self.values.is_err() {
-                Some(i)
+                (i, self.keys[i] == *key)
             } else {
                 panic!("ook");
             }
         } else {
-            Some(self.keys.len())
+            (self.keys.len(), false)
         }
+    }
+
+    fn first_cursor(&self, meta: &Self::Meta) -> usize {
+        0
     }
 
     fn cursor_get(&self, meta: &Self::Meta, cursor: usize) -> Option<(usize, V)> {
@@ -334,8 +334,8 @@ fn test() {
         t.find_one(&meta, 0, v).unwrap();
     }
     for v in &vs {
-        let c = t.find(&meta, 0, v).unwrap();
-        t.cursor_delete(&meta, &c);
+        let c = t.find(&meta, 0, v).0;
+        t.cursor_delete(&meta, c);
     }
     t.show_nodes(0);
 }

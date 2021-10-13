@@ -76,7 +76,7 @@ impl BTreeNode<Key, Value> for Page {
     }
 
     fn split_out(&mut self, meta: &Self::Meta) -> (Key, Self) {
-        let size = self.size(&meta);
+        let size = self.size(meta);
         if self.is_leaf(meta) {
             let mut new_page = Page::new_leaf();
 
@@ -338,7 +338,7 @@ impl BTreeNode<Key, Value> for Page {
                 }
                 None => {
                     let key_interval = INDEX_SIZE;
-                    
+
                     let key_iter = |this: &Self, mut index: usize| {
                         let mut last_offset = parse_u16(
                             this.slice(INTERNAL_HEADER_SIZE + key_interval * index, key_interval),
@@ -512,21 +512,22 @@ impl BTreeNode<Key, Value> for Page {
 
     fn get_child(&self, meta: &Self::Meta, key: &Key) -> usize {
         let size = self.size(meta);
-        assert!(0 < size);
+        debug_assert!(0 < size);
 
         let value_size = 4;
         match meta.key_size {
             Some(key_size) => {
                 // TODO: binary search
+                let mut index = size;
                 for i in 0..size - 1 {
                     let offset = INTERNAL_HEADER_SIZE + key_size * i;
                     let k = &self[offset..offset + key_size];
                     if key.as_slice() < k {
-                        let offset = PAGE_SIZE as usize - value_size * (i + 1);
-                        return parse_u32(&self[offset..offset + value_size]) as usize;
+                        index = i + 1;
+                        break;
                     }
                 }
-                let offset = PAGE_SIZE as usize - value_size * size;
+                let offset = PAGE_SIZE as usize - value_size * index;
                 parse_u32(&self[offset..offset + value_size]) as usize
             }
             None => {
@@ -621,13 +622,13 @@ impl BTreeNode<Key, Value> for Page {
 
     fn insert_value(&mut self, meta: &Self::Meta, key: &Key, value: &Value) -> bool {
         let size = self.size(meta);
-        let res = match meta {
+        match meta {
             Meta {
                 key_size: Some(key_size),
                 value_size: Some(value_size),
             } => {
-                assert_eq!(*key_size, key.len());
-                assert_eq!(*value_size, value.len());
+                debug_assert_eq!(*key_size, key.len());
+                debug_assert_eq!(*value_size, value.len());
 
                 // check if insertable
                 let insert_data_size = *key_size + *value_size;
@@ -661,14 +662,12 @@ impl BTreeNode<Key, Value> for Page {
                 // insert
                 self[key_offset..key_offset + key_size].copy_from_slice(key);
                 self[value_offset - value_size..value_offset].copy_from_slice(value);
-
-                true
             }
             Meta {
                 key_size: Some(key_size),
                 value_size: None,
             } => {
-                assert_eq!(*key_size, key.len());
+                debug_assert_eq!(*key_size, key.len());
 
                 let key_interval = key_size + INDEX_SIZE;
 
@@ -733,8 +732,6 @@ impl BTreeNode<Key, Value> for Page {
                 // insert
                 self[key_offset..key_offset + key_size].copy_from_slice(key);
                 self[end - value.len()..end].copy_from_slice(value);
-
-                true
             }
             Meta {
                 key_size: None,
@@ -794,8 +791,6 @@ impl BTreeNode<Key, Value> for Page {
                 self.slice_mut(insert_offset - value_size - key.len(), key.len())
                     .copy_from_slice(key);
                 self[insert_offset - value_size..insert_offset].copy_from_slice(value);
-
-                true
             }
             Meta {
                 key_size: None,
@@ -864,15 +859,11 @@ impl BTreeNode<Key, Value> for Page {
                 self.slice_mut(insert_offset - value.len() - key.len(), key.len())
                     .copy_from_slice(key);
                 self[insert_offset - value.len()..insert_offset].copy_from_slice(value);
-
-                true
             }
-        };
-        if res {
-            // increment size
-            self.set_size(size + 1);
         }
-        res
+        // increment size
+        self.set_size(size + 1);
+        true
     }
 
     fn get_next(&self, _: &Self::Meta) -> Option<usize> {
@@ -888,11 +879,7 @@ impl BTreeNode<Key, Value> for Page {
         self.set_next(i);
     }
 
-    fn first_cursor(&self, _: &Self::Meta) -> usize {
-        0
-    }
-
-    fn find(&self, meta: &Self::Meta, key: &Key) -> (usize, bool) {
+    fn find_cursor(&self, meta: &Self::Meta, key: &Key) -> (usize, bool) {
         let size = self.size(meta);
         match meta {
             Meta {
@@ -968,6 +955,10 @@ impl BTreeNode<Key, Value> for Page {
         }
     }
 
+    fn first_cursor(&self, _: &Self::Meta) -> usize {
+        0
+    }
+
     fn cursor_get(&self, meta: &Self::Meta, cursor: usize) -> Option<(Key, Value)> {
         match meta {
             Meta {
@@ -975,9 +966,9 @@ impl BTreeNode<Key, Value> for Page {
                 value_size: Some(value_size),
             } => {
                 let key_index = LEAF_HEADER_SIZE + key_size * cursor;
-                let key = self[key_index..key_index + key_size].to_vec();
+                let key = self.slice(key_index, *key_size).to_vec();
                 let value_index = PAGE_SIZE as usize - value_size * (cursor + 1);
-                let value = self[value_index..value_index + value_size].to_vec();
+                let value = self.slice(value_index, *value_size).to_vec();
 
                 Some((key, value))
             }
@@ -997,7 +988,7 @@ impl BTreeNode<Key, Value> for Page {
                     parse_u16(&self[value_index_index..value_index_index + INDEX_SIZE]) as usize
                 };
                 let key_index = LEAF_HEADER_SIZE + key_interval * cursor;
-                let key = self[key_index..key_index + key_size].to_vec();
+                let key = self.slice(key_index, *key_size).to_vec();
                 let value = self[value_start..value_end].to_vec();
 
                 Some((key, value))
@@ -1051,8 +1042,8 @@ impl BTreeNode<Key, Value> for Page {
 
     fn cursor_delete(&mut self, meta: &Self::Meta, cursor: usize) -> bool {
         let size = self.size(meta);
-        assert!(0 < size);
-        assert!(cursor < size);
+        debug_assert!(0 < size);
+        debug_assert!(cursor < size);
         match meta {
             Meta {
                 key_size: Some(key_size),

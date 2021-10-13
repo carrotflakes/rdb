@@ -190,8 +190,7 @@ impl Storage for File {
                 .unwrap();
             cursor.btree_cursor = self
                 .pager
-                .cursor_delete(&source.meta, &cursor.btree_cursor)
-                .unwrap();
+                .cursor_delete(&source.meta, cursor.btree_cursor.clone());
 
             let main_source = &self.sources[parent_source_index];
             let (btree_cursor, found) =
@@ -205,9 +204,7 @@ impl Storage for File {
                 .unwrap();
 
             // delete main
-            self.pager
-                .cursor_delete(&main_source.meta, &btree_cursor)
-                .unwrap();
+            self.pager.cursor_delete(&main_source.meta, btree_cursor);
 
             let value = main_source.build_value(&key, &value);
             let pk = key;
@@ -232,7 +229,7 @@ impl Storage for File {
                 while self.pager.cursor_get(&source.meta, &cursor).unwrap().1 != pk {
                     cursor = self.pager.cursor_next(&source.meta, cursor);
                 }
-                self.pager.cursor_delete(&source.meta, &cursor).unwrap();
+                self.pager.cursor_delete(&source.meta, cursor);
             }
         } else {
             let (key, value) = self
@@ -243,8 +240,7 @@ impl Storage for File {
             // delete main
             cursor.btree_cursor = self
                 .pager
-                .cursor_delete(&source.meta, &cursor.btree_cursor)
-                .unwrap();
+                .cursor_delete(&source.meta, cursor.btree_cursor.clone());
 
             let value = source.build_value(&key, &value);
             let pk = key;
@@ -270,7 +266,7 @@ impl Storage for File {
                 while self.pager.cursor_get(&source.meta, &cursor).unwrap().1 != pk {
                     cursor = self.pager.cursor_next(&source.meta, cursor);
                 }
-                self.pager.cursor_delete(&source.meta, &cursor).unwrap();
+                self.pager.cursor_delete(&source.meta, cursor);
             }
         };
 
