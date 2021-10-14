@@ -300,6 +300,19 @@ fn map_update(update: mapping::Update) -> Result<Update, serde_yaml::Error> {
 fn map_filter_item(filter_item: mapping::FilterItem) -> FilterItem {
     match filter_item {
         mapping::FilterItem::Eq(left, right) => FilterItem::Eq(map_expr(left), map_expr(right)),
+        mapping::FilterItem::Ne(left, right) => FilterItem::Ne(map_expr(left), map_expr(right)),
+        mapping::FilterItem::Lt(left, right) => FilterItem::Lt(map_expr(left), map_expr(right)),
+        mapping::FilterItem::Le(left, right) => FilterItem::Le(map_expr(left), map_expr(right)),
+        mapping::FilterItem::Gt(left, right) => FilterItem::Gt(map_expr(left), map_expr(right)),
+        mapping::FilterItem::Ge(left, right) => FilterItem::Ge(map_expr(left), map_expr(right)),
+        mapping::FilterItem::And(left, right) => FilterItem::And(
+            Box::new(map_filter_item(*left)),
+            Box::new(map_filter_item(*right)),
+        ),
+        mapping::FilterItem::Or(left, right) => FilterItem::Or(
+            Box::new(map_filter_item(*left)),
+            Box::new(map_filter_item(*right)),
+        ),
     }
 }
 
@@ -402,6 +415,13 @@ mod mapping {
     #[serde(rename_all = "snake_case")]
     pub enum FilterItem {
         Eq(Expr, Expr),
+        Ne(Expr, Expr),
+        Lt(Expr, Expr),
+        Le(Expr, Expr),
+        Gt(Expr, Expr),
+        Ge(Expr, Expr),
+        And(Box<FilterItem>, Box<FilterItem>),
+        Or(Box<FilterItem>, Box<FilterItem>),
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]

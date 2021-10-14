@@ -40,9 +40,9 @@ impl<S: Storage> Engine<S> {
     pub fn execute_select(&self, select: &Select) -> Result<(Vec<String>, Vec<Data>), String> {
         let mut rows = vec![];
 
-        let columns = self.stream_columns(&select.streams[0]);
+        let columns = stream_columns(self.schema(), &select.streams[0]);
         for stream in select.streams.iter().skip(1) {
-            if self.stream_columns(stream) != columns {
+            if stream_columns(self.schema(), stream) != columns {
                 return Err(format!("streams have different columns"));
             }
         }
@@ -217,20 +217,112 @@ impl<S: Storage> Engine<S> {
                         self.update_auto_inc(&table_name, &column_names[i], &values[i]);
                     }
                     values[i].clone()
-                } else if let Some(default) = &column.default {
-                    match default {
+                } else {
+                    match column.default.as_ref().expect("no default") {
                         crate::schema::Default::Data(d) => d.clone(),
                         crate::schema::Default::AutoIncrement => {
                             self.auto_inc(table_name, &column.name)
-                            // Data::U64(self.storage.issue_auto_increment(table_name, &column.name))
                         }
                     }
-                } else {
-                    panic!("no default")
                 }
             })
             .collect();
         self.storage.add_row(&table_name, values)
+    }
+
+    fn execute_insert_from_select(
+        &mut self,
+        table_name: &String,
+        select: &Select,
+    ) -> Result<(), String> {
+        let (columns, rows) = self.execute_select(select)?;
+        for row in rows.chunks(columns.len()) {
+            self.execute_insert_row(table_name, &columns, row)?;
+        }
+        Ok(())
+    }
+
+    fn scan(&self, stream: &Stream, appender: RowAppender<S>) -> Result<(), String> {
+        match &stream.source {
+            SelectSource::Table(source_table) => {
+                let table =
+                    if let Some((_, table)) = self.schema().get_table(&source_table.table_name) {
+                        table
+                    } else {
+                        return Err(format!("missing table"));
+                    };
+                let columns = table.columns.iter().map(|c| c.name.to_owned()).collect();
+                let mut appender = build_excecutable_query_process(
+                    self.schema(),
+                    &self.storage,
+                    columns,
+                    &stream.process,
+                    appender,
+                );
+
+                let source = self
+                    .storage
+                    .source_index(&table.name, &source_table.keys)
+                    .unwrap();
+                let mut cursor = if let Some(from) = &source_table.from {
+                    self.storage.get_cursor_just(source, from)
+                } else {
+                    self.storage.get_cursor_first(source)
+                };
+                self.storage.cursor_next_occupied(&mut cursor); // get_cursor_justでページの最後を示すカーソルが返ってくる可能性がある
+                let end_check_columns = source_table.to.as_ref().map(|to| {
+                    (
+                        source_table
+                            .keys
+                            .iter()
+                            .map(|name| table.get_column(name).unwrap().0)
+                            .collect::<Vec<_>>(),
+                        to.clone(),
+                    )
+                });
+                let mut ctx = QueryContext {
+                    storage: &self.storage,
+                    ended: false,
+                };
+                while !ctx.ended && !self.storage.cursor_is_end(&cursor) {
+                    if let Some(row) = self.storage.cursor_get_row(&cursor) {
+                        if let Some((cs, to)) = &end_check_columns {
+                            let now = cs.iter().map(|i| row[*i].clone()).collect::<Vec<_>>();
+                            if to < &now {
+                                break;
+                            }
+                        }
+                        appender(&mut ctx, row);
+                        self.storage.cursor_advance(&mut cursor);
+                    } else {
+                        break;
+                    }
+                }
+            }
+            SelectSource::Iota {
+                column_name,
+                from,
+                to,
+            } => {
+                let mut appender = build_excecutable_query_process(
+                    self.schema(),
+                    &self.storage,
+                    vec![column_name.clone()],
+                    &stream.process,
+                    appender,
+                );
+
+                let mut ctx = QueryContext {
+                    storage: &self.storage,
+                    ended: false,
+                };
+                for i in *from..*to {
+                    appender(&mut ctx, vec![Data::U64(i)]);
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn auto_inc(&mut self, table_name: &str, column_name: &str) -> Data {
@@ -346,121 +438,11 @@ impl<S: Storage> Engine<S> {
             }
         }
     }
+}
 
-    fn execute_insert_from_select(
-        &mut self,
-        table_name: &String,
-        select: &Select,
-    ) -> Result<(), String> {
-        let (columns, rows) = self.execute_select(select)?;
-        for row in rows.chunks(columns.len()) {
-            self.execute_insert_row(table_name, &columns, row)?;
-        }
-        Ok(())
-    }
-
-    fn stream_columns(&self, stream: &Stream) -> Vec<String> {
-        let mut columns = match &stream.source {
-            SelectSource::Table(source_table) => {
-                let table =
-                    if let Some((_, table)) = self.schema().get_table(&source_table.table_name) {
-                        table
-                    } else {
-                        panic!("missing table");
-                    };
-                table.columns.iter().map(|c| c.name.to_owned()).collect()
-            }
-            SelectSource::Iota { column_name, .. } => vec![column_name.clone()],
-        };
-
-        for p in &stream.process {
-            columns = select_process_item_column(self.schema(), p, &columns);
-        }
-
-        columns
-    }
-
-    fn scan(&self, stream: &Stream, appender: RowAppender<S>) -> Result<(), String> {
-        match &stream.source {
-            SelectSource::Table(source_table) => {
-                let table =
-                    if let Some((_, table)) = self.schema().get_table(&source_table.table_name) {
-                        table
-                    } else {
-                        return Err(format!("missing table"));
-                    };
-                let columns = table.columns.iter().map(|c| c.name.to_owned()).collect();
-                let (_, mut appender) = build_excecutable_query_process(
-                    self.schema(),
-                    &self.storage,
-                    columns,
-                    &stream.process,
-                    appender,
-                );
-
-                let source = self
-                    .storage
-                    .source_index(&table.name, &source_table.keys)
-                    .unwrap();
-                let mut cursor = if let Some(from) = &source_table.from {
-                    self.storage.get_cursor_just(source, from)
-                } else {
-                    self.storage.get_cursor_first(source)
-                };
-                self.storage.cursor_next_occupied(&mut cursor); // get_cursor_justでページの最後を示すカーソルが返ってくる可能性がある
-                let end_check_columns = source_table.to.as_ref().map(|to| {
-                    (
-                        source_table
-                            .keys
-                            .iter()
-                            .map(|name| table.get_column(name).unwrap().0)
-                            .collect::<Vec<_>>(),
-                        to.clone(),
-                    )
-                });
-                let mut ctx = QueryContext {
-                    storage: &self.storage,
-                    ended: false,
-                };
-                while !ctx.ended && !self.storage.cursor_is_end(&cursor) {
-                    if let Some(row) = self.storage.cursor_get_row(&cursor) {
-                        if let Some((cs, to)) = &end_check_columns {
-                            let now = cs.iter().map(|i| row[*i].clone()).collect::<Vec<_>>();
-                            if to < &now {
-                                break;
-                            }
-                        }
-                        appender(&mut ctx, row);
-                        self.storage.cursor_advance(&mut cursor);
-                    } else {
-                        break;
-                    }
-                }
-            }
-            SelectSource::Iota {
-                column_name,
-                from,
-                to,
-            } => {
-                let (_, mut appender) = build_excecutable_query_process(
-                    self.schema(),
-                    &self.storage,
-                    vec![column_name.clone()],
-                    &stream.process,
-                    appender,
-                );
-
-                let mut ctx = QueryContext {
-                    storage: &self.storage,
-                    ended: false,
-                };
-                for i in *from..*to {
-                    appender(&mut ctx, vec![Data::U64(i)]);
-                }
-            }
-        }
-
-        Ok(())
+impl<S: Storage> Engine<S> {
+    pub fn flush(&self) {
+        self.storage.flush();
     }
 }
 
@@ -471,33 +453,47 @@ pub struct QueryContext<'a, S: Storage> {
 
 type RowAppender<S> = Box<dyn for<'a> FnMut(&mut QueryContext<'a, S>, Vec<Data>)>;
 
+fn stream_columns(schema: &Schema, stream: &Stream) -> Vec<String> {
+    let mut columns = match &stream.source {
+        SelectSource::Table(source_table) => {
+            let table = if let Some((_, table)) = schema.get_table(&source_table.table_name) {
+                table
+            } else {
+                panic!("missing table");
+            };
+            table.columns.iter().map(|c| c.name.to_owned()).collect()
+        }
+        SelectSource::Iota { column_name, .. } => vec![column_name.clone()],
+    };
+
+    for p in &stream.process {
+        columns = select_process_item_column(schema, p, &columns);
+    }
+
+    columns
+}
+
 fn build_excecutable_query_process<S: Storage>(
     schema: &Schema,
     storage: &S,
     columns: Vec<String>,
     process: &[ProcessItem],
     mut appender: RowAppender<S>,
-) -> (Vec<String>, RowAppender<S>) {
-    let mut columnss = vec![columns];
+) -> RowAppender<S> {
+    let mut columns_vec = vec![columns];
     for p in process {
-        let columns = columnss.last().unwrap();
+        let columns = columns_vec.last().unwrap();
         let columns = select_process_item_column(schema, p, columns);
-        columnss.push(columns);
+        columns_vec.push(columns);
     }
 
-    for (p, pre_post_columns) in process.iter().zip(columnss.windows(2)).rev() {
+    for (p, pre_post_columns) in process.iter().zip(columns_vec.windows(2)).rev() {
         let pre_columns = &pre_post_columns[0];
         let post_columns = &pre_post_columns[1];
         appender = process_item_appender(p, appender, pre_columns, post_columns, schema, storage);
     }
 
-    (columnss.pop().unwrap(), appender)
-}
-
-impl<S: Storage> Engine<S> {
-    pub fn flush(&self) {
-        self.storage.flush();
-    }
+    appender
 }
 
 fn select_process_item_column(
@@ -559,25 +555,14 @@ fn process_item_appender<S: Storage>(
             })
         }
         ProcessItem::Filter { items } => {
-            enum Item {
-                Eq(Expr, Expr),
-            }
             let mut items = items
                 .iter()
-                .map(|item| match item {
-                    query::FilterItem::Eq(left, right) => {
-                        Item::Eq(convert_expr(left), convert_expr(right))
-                    }
-                })
+                .map(|item| convert_filter_item(&convert_expr, item))
                 .collect::<Vec<_>>();
             Box::new(move |ctx, row| {
                 for item in &mut items {
-                    match item {
-                        Item::Eq(left, right) => {
-                            if left.eval(&row) != right.eval(&row) {
-                                return;
-                            }
-                        }
+                    if !item.eval(&row) {
+                        return;
                     }
                 }
                 appender(ctx, row);
@@ -667,6 +652,54 @@ fn process_item_appender<S: Storage>(
                     count -= 1;
                 }
             })
+        }
+    }
+}
+
+enum Item {
+    Eq(Expr, Expr),
+    Ne(Expr, Expr),
+    Lt(Expr, Expr),
+    Le(Expr, Expr),
+    Gt(Expr, Expr),
+    Ge(Expr, Expr),
+    And(Box<Item>, Box<Item>),
+    Or(Box<Item>, Box<Item>),
+}
+
+fn convert_filter_item(
+    convert_expr: &impl Fn(&query::Expr) -> Expr,
+    item: &query::FilterItem,
+) -> Item {
+    match item {
+        query::FilterItem::Eq(left, right) => Item::Eq(convert_expr(left), convert_expr(right)),
+        query::FilterItem::Ne(left, right) => Item::Ne(convert_expr(left), convert_expr(right)),
+        query::FilterItem::Lt(left, right) => Item::Lt(convert_expr(left), convert_expr(right)),
+        query::FilterItem::Le(left, right) => Item::Le(convert_expr(left), convert_expr(right)),
+        query::FilterItem::Gt(left, right) => Item::Gt(convert_expr(left), convert_expr(right)),
+        query::FilterItem::Ge(left, right) => Item::Ge(convert_expr(left), convert_expr(right)),
+        query::FilterItem::And(left, right) => Item::And(
+            Box::new(convert_filter_item(convert_expr, left)),
+            Box::new(convert_filter_item(convert_expr, right)),
+        ),
+        query::FilterItem::Or(left, right) => Item::Or(
+            Box::new(convert_filter_item(convert_expr, left)),
+            Box::new(convert_filter_item(convert_expr, right)),
+        ),
+    }
+}
+
+impl Item {
+    fn eval(&mut self, row: &[Data]) -> bool {
+        match self {
+            Item::Eq(left, right) => left.eval(&row) == right.eval(&row),
+            Item::Ne(left, right) => left.eval(&row) != right.eval(&row),
+            Item::Lt(left, right) => left.eval(&row) < right.eval(&row),
+            Item::Le(left, right) => left.eval(&row) <= right.eval(&row),
+            Item::Gt(left, right) => left.eval(&row) > right.eval(&row),
+            Item::Ge(left, right) => left.eval(&row) >= right.eval(&row),
+            Item::And(left, right) => left.eval(row) && right.eval(row),
+            Item::Or(left, right) => left.eval(row) || right.eval(row),
         }
     }
 }

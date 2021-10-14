@@ -2,7 +2,7 @@ use std::convert::TryInto;
 
 use serde::{Deserialize, Serialize};
 
-// I64, Date, Datetime, Time, Json
+// I64, Date, Datetime, Time, Json, Bool, Bytes
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Type {

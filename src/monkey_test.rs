@@ -5,7 +5,10 @@ use crate::{
     data::Data,
     engine::Engine,
     front::{print_table, yaml::schema::parse_table_from_yaml},
-    query::{Delete, Insert, Select, SelectSource, SelectSourceTable, Stream},
+    query::{
+        Delete, Expr, FilterItem, Insert, ProcessItem, Select, SelectSource, SelectSourceTable,
+        Stream,
+    },
 };
 
 #[test]
@@ -88,6 +91,28 @@ indices:
     let (cs, vs) = engine.execute_select(&query).unwrap();
     print_table(&cs, &vs);
     assert_eq!(vs.len() / cs.len(), insert_num);
+
+    // show age >= 50
+    let query = Select {
+        sub_queries: vec![],
+        streams: vec![Stream {
+            source: SelectSource::Table(SelectSourceTable {
+                table_name: "user".to_string(),
+                keys: vec!["id".to_string()],
+                from: None,
+                to: None,
+            }),
+            process: vec![ProcessItem::Filter {
+                items: vec![FilterItem::Ge(
+                    Expr::Column("age".to_owned()),
+                    Expr::Data(Data::U64(50)),
+                )],
+            }],
+        }],
+        post_process: vec![],
+    };
+    let (cs, vs) = engine.execute_select(&query).unwrap();
+    print_table(&cs, &vs);
 
     // select each
     for i in 0..insert_num {

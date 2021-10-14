@@ -71,6 +71,13 @@ pub enum ProcessItem {
 #[derive(Debug, Clone)]
 pub enum FilterItem {
     Eq(Expr, Expr),
+    Ne(Expr, Expr),
+    Lt(Expr, Expr),
+    Le(Expr, Expr),
+    Gt(Expr, Expr),
+    Ge(Expr, Expr),
+    And(Box<FilterItem>, Box<FilterItem>),
+    Or(Box<FilterItem>, Box<FilterItem>),
 }
 
 #[derive(Debug, Clone)]
