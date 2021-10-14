@@ -53,7 +53,7 @@ pub enum ProcessItem {
         right_keys: Vec<String>,
     },
     Distinct {
-        column_name: String,
+        column_names: Vec<String>,
     },
     AddColumn {
         column_name: String,

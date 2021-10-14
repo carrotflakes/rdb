@@ -293,7 +293,7 @@ select:
             over:
             -   id
     process:
-    -   distinct: user_id
+    -   distinct: [user_id]
     -   add_column:
             name: hoge
             expr:

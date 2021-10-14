@@ -244,7 +244,7 @@ fn map_process_item(process_item: mapping::ProcessItem) -> Result<ProcessItem, s
             left_keys,
             right_keys,
         },
-        mapping::ProcessItem::Distinct(column_name) => ProcessItem::Distinct { column_name },
+        mapping::ProcessItem::Distinct(column_names) => ProcessItem::Distinct { column_names },
         mapping::ProcessItem::AddColumn { name, expr } => ProcessItem::AddColumn {
             column_name: name,
             expr: map_expr(expr),
@@ -402,7 +402,7 @@ mod mapping {
             left_keys: Vec<String>,
             right_keys: Vec<String>,
         },
-        Distinct(String),
+        Distinct(Vec<String>),
         AddColumn {
             name: String,
             expr: Expr,

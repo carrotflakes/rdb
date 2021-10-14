@@ -614,12 +614,15 @@ fn process_item_appender<S: Storage>(
                 } {}
             })
         }
-        ProcessItem::Distinct { column_name } => {
-            let column_index = pre_columns.iter().position(|x| x == column_name).unwrap();
-            let mut hashset = HashSet::new();
+        ProcessItem::Distinct { column_names } => {
+            let column_indices: Vec<_> = column_names
+                .iter()
+                .map(|name| pre_columns.iter().position(|x| x == name).unwrap())
+                .collect();
+            let mut hashset = HashSet::<Vec<Data>>::new();
 
             Box::new(move |ctx, row| {
-                if hashset.insert(row[column_index].clone()) {
+                if hashset.insert(column_indices.iter().map(|i| row[*i].clone()).collect()) {
                     appender(ctx, row);
                 }
             })
