@@ -1,5 +1,7 @@
-#[cfg(test)]
-mod test;
+use std::sync::{RwLockReadGuard, RwLockWriteGuard};
+
+// #[cfg(test)]
+// mod test;
 
 #[derive(Debug, Clone)]
 pub struct BTreeCursor {
@@ -39,12 +41,20 @@ pub trait BTreeNode<K: Clone + PartialEq + PartialOrd, V: Clone> {
     fn cursor_delete(&mut self, meta: &Self::Meta, cursor: usize) -> bool;
 }
 
+pub trait NodeRef<T>: Sized {
+    type R: std::ops::Deref<Target = T>;
+    type W: std::ops::DerefMut<Target = T>;
+
+    fn read(&self) -> RwLockReadGuard<Self::R>;
+    fn write(&self) -> RwLockWriteGuard<Self::W>;
+}
+
 pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
     type Node: BTreeNode<K, V>;
+    type NodeRef: NodeRef<Self::Node>;
 
     fn add_root_node(&mut self) -> usize;
-    fn node_ref(&self, node_i: usize) -> &Self::Node;
-    fn node_mut(&mut self, node_i: usize) -> &mut Self::Node;
+    fn get_node(&self, node_i: usize) -> Self::NodeRef;
     fn push(&mut self, node: Self::Node) -> usize;
     fn swap(&mut self, node_i: usize, node: Self::Node) -> Self::Node;
 
@@ -53,7 +63,8 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
         node_i: usize,
     ) -> BTreeCursor {
-        let node = self.node_ref(node_i);
+        let node = self.get_node(node_i);
+        let node = node.read();
         if node.is_leaf(meta) {
             BTreeCursor {
                 node_i,
@@ -71,28 +82,39 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         key: &K,
     ) -> (BTreeCursor, bool) {
         debug_assert_ne!(node_i, 0);
-        let mut node = self.node_ref(node_i);
+        let node_ref = self.get_node(node_i);
+        let node = node_ref.read();
         if node.is_leaf(meta) {
-            let (mut i, mut found) = node.find_cursor(meta, key);
             let mut node_i = node_i;
-            while node.size(meta) <= i {
-                if let Some(next_node_i) = node.get_next(meta) {
-                    node_i = next_node_i;
-                    node = self.node_ref(node_i);
-                    let r = node.find_cursor(meta, key);
-                    i = r.0;
-                    found = r.1;
-                } else {
+            std::mem::drop(node);
+            std::mem::drop(node_ref);
+            loop {
+                let node_ref = self.get_node(node_i);
+                let node = node_ref.read();
+                let r = node.find_cursor(meta, key);
+                if node.size(meta) > r.0 {
                     return (
                         BTreeCursor {
-                            node_i: 0,
-                            value_i: 0,
+                            node_i,
+                            value_i: r.0,
                         },
-                        false,
+                        r.1,
                     );
                 }
+                if let Some(next_node_i) = node.get_next(meta) {
+                    node_i = next_node_i;
+                    if node_i != 0 {
+                        continue;
+                    }
+                }
+                return (
+                    BTreeCursor {
+                        node_i: 0,
+                        value_i: 0,
+                    },
+                    false,
+                );
             }
-            (BTreeCursor { node_i, value_i: i }, found)
         } else {
             let child_node_i = node.get_child(meta, key);
             if child_node_i == 0 {
@@ -110,19 +132,20 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         value: &V,
     ) -> Result<(), String> {
         debug_assert_ne!(node_i, 0);
-        if self.node_ref(node_i).is_leaf(meta) {
-            if self.node_mut(node_i).insert_value(meta, key, value) {
+        if self.get_node(node_i).read().is_leaf(meta) {
+            if self.get_node(node_i).write().insert_value(meta, key, value) {
                 Ok(())
             } else {
-                let next_i = self.node_ref(node_i).get_next(meta);
-                let (pivot_key, mut new_node) = self.node_mut(node_i).split_out(meta);
+                let next_i = self.get_node(node_i).read().get_next(meta);
+                let (pivot_key, mut new_node) = self.get_node(node_i).write().split_out(meta);
                 if key < &pivot_key {
-                    self.node_mut(node_i).insert_value(meta, key, value);
+                    self.get_node(node_i).write().insert_value(meta, key, value);
                 } else {
                     new_node.insert_value(meta, key, value);
                 }
                 let new_node_i = self.insert_node(meta, node_i, &pivot_key, new_node)?;
-                let node = self.node_mut(new_node_i);
+                let node_ref = self.get_node(new_node_i);
+                let mut node = node_ref.write();
                 debug_assert!(node.is_leaf(meta));
                 if next_i.is_some() {
                     node.set_next(meta, next_i.unwrap());
@@ -130,9 +153,9 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
                 Ok(())
             }
         } else {
-            let child_node_i = self.node_ref(node_i).get_child(meta, key);
+            let child_node_i = self.get_node(node_i).read().get_child(meta, key);
             if child_node_i == 0 {
-                dbg!(self.node_ref(node_i).get_children(meta));
+                dbg!(self.get_node(node_i).read().get_children(meta));
             }
             self.insert(meta, child_node_i, key, value)
         }
@@ -146,30 +169,39 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         key: &K,
         node: Self::Node,
     ) -> Result<usize, String> {
-        if let Some(parent_i) = self.node_ref(node_i).get_parent(meta) {
+        if let Some(parent_i) = self.get_node(node_i).read().get_parent(meta) {
             let inserted_node_i = self.push(node);
             if self
-                .node_mut(parent_i)
+                .get_node(parent_i)
+                .write()
                 .insert_node(meta, key, inserted_node_i)
             {
-                self.node_mut(inserted_node_i).set_parent(meta, parent_i);
+                self.get_node(inserted_node_i)
+                    .write()
+                    .set_parent(meta, parent_i);
             } else {
                 // 親ノードがいっぱいなので分割する
-                let (pivot_key, mut new_node) = self.node_mut(parent_i).split_out(meta);
+                let (pivot_key, mut new_node) = self.get_node(parent_i).write().split_out(meta);
                 if key < &pivot_key {
-                    self.node_mut(parent_i)
+                    self.get_node(parent_i)
+                        .write()
                         .insert_node(meta, key, inserted_node_i);
-                    self.node_mut(inserted_node_i).set_parent(meta, parent_i);
+                    self.get_node(inserted_node_i)
+                        .write()
+                        .set_parent(meta, parent_i);
                     let parent2_i = self.insert_node(meta, parent_i, &pivot_key, new_node)?;
                     self.reparent(meta, parent2_i);
                 } else {
                     new_node.insert_node(meta, key, inserted_node_i);
                     let parent2_i = self.insert_node(meta, parent_i, &pivot_key, new_node)?;
-                    self.node_mut(inserted_node_i).set_parent(meta, parent2_i);
+                    self.get_node(inserted_node_i)
+                        .write()
+                        .set_parent(meta, parent2_i);
                     self.reparent(meta, parent2_i);
                 }
             }
-            let node = self.node_mut(node_i);
+            let node_ref = self.get_node(node_i);
+            let mut node = node_ref.write();
             if node.is_leaf(meta) {
                 // is_leaf チェック必要?
                 node.set_next(meta, inserted_node_i);
@@ -181,14 +213,16 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
             let node_i1 = self.push(n);
             let node_i2 = self.push(node);
             {
-                let node1 = self.node_mut(node_i1);
+                let node_ref = self.get_node(node_i1);
+                let mut node1 = node_ref.write();
                 node1.set_parent(meta, node_i);
                 if node1.is_leaf(meta) {
                     node1.set_next(meta, node_i2);
                 }
             }
-            self.node_mut(node_i2).set_parent(meta, node_i);
-            self.node_mut(node_i)
+            self.get_node(node_i2).write().set_parent(meta, node_i);
+            self.get_node(node_i)
+                .write()
                 .init_as_root_internal(meta, key, node_i1, node_i2);
             self.reparent(meta, node_i1);
             Ok(node_i2)
@@ -196,9 +230,9 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
     }
 
     fn reparent(&mut self, meta: &<Self::Node as BTreeNode<K, V>>::Meta, node_i: usize) {
-        if !self.node_ref(node_i).is_leaf(meta) {
-            for child_node_i in self.node_ref(node_i).get_children(meta) {
-                self.node_mut(child_node_i).set_parent(meta, node_i);
+        if !self.get_node(node_i).read().is_leaf(meta) {
+            for child_node_i in self.get_node(node_i).read().get_children(meta) {
+                self.get_node(child_node_i).write().set_parent(meta, node_i);
             }
         }
     }
@@ -209,8 +243,9 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         cursor: &BTreeCursor,
     ) -> Option<(K, V)> {
         let cursor = self.cursor_next_occupied(meta, cursor.clone());
-        let node = self.node_ref(cursor.node_i);
-        node.cursor_get(meta, cursor.value_i)
+        self.get_node(cursor.node_i)
+            .read()
+            .cursor_get(meta, cursor.value_i)
     }
 
     fn cursor_delete(
@@ -220,7 +255,8 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
     ) -> BTreeCursor {
         let cursor = self.cursor_next_occupied(meta, cursor);
         if !self
-            .node_mut(cursor.node_i)
+            .get_node(cursor.node_i)
+            .write()
             .cursor_delete(meta, cursor.value_i)
         {
             panic!("something went wrong :(")
@@ -242,15 +278,30 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
         mut cursor: BTreeCursor,
     ) -> BTreeCursor {
-        let mut node = self.node_ref(cursor.node_i);
-        while node.size(meta) <= cursor.value_i {
+        if cursor.node_i == 0 {
+            return cursor;
+        }
+
+        let node_ref = self.get_node(cursor.node_i);
+        let node = node_ref.read();
+        if node.size(meta) <= cursor.value_i {
             if let Some(next_node_i) = node.get_next(meta) {
                 cursor.node_i = next_node_i;
-                node = self.node_ref(next_node_i);
-                cursor.value_i = node.first_cursor(meta);
-            } else {
-                cursor.node_i = 0;
-                break;
+                loop {
+                    let node_ref = self.get_node(cursor.node_i);
+                    let node = node_ref.read();
+                    cursor.value_i = node.first_cursor(meta);
+                    if node.size(meta) <= cursor.value_i {
+                        if let Some(next_node_i) = node.get_next(meta) {
+                            cursor.node_i = next_node_i;
+                        } else {
+                            cursor.node_i = 0;
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
             }
         }
         cursor
@@ -261,20 +312,6 @@ pub trait BTree<K: Clone + PartialEq + PartialOrd, V: Clone> {
         meta: &<Self::Node as BTreeNode<K, V>>::Meta,
         cursor: &BTreeCursor,
     ) -> bool {
-        if cursor.node_i == 0 {
-            return true;
-        }
-        let mut cursor = cursor.clone();
-        let mut node = self.node_ref(cursor.node_i);
-        while node.size(meta) <= cursor.value_i {
-            if let Some(next_node_i) = node.get_next(meta) {
-                cursor.node_i = next_node_i;
-                node = self.node_ref(cursor.node_i);
-                cursor.value_i = node.first_cursor(meta);
-            } else {
-                return true;
-            }
-        }
-        false
+        self.cursor_next_occupied(meta, cursor.clone()).node_i == 0
     }
 }

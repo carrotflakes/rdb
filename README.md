@@ -31,17 +31,17 @@
   - [ ] check constraint
 - [ ] auto increment
 - [ ] index
+- [ ] transaction
 - [ ] explain
 - [ ] tests
   - [ ] unit tests
-  - [ ] monky test
+  - [ ] monkey test
 - [ ] benchmark
 - [ ] dump
 
 ### extra
 
 - [ ] tcp connection
-- [ ] transaction
 - [ ] logging
 - [ ] large data
 - [ ] multi thread

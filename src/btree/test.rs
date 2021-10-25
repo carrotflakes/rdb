@@ -1,6 +1,8 @@
 #![allow(warnings)]
 
-use super::{BTree, BTreeNode};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+use super::{BTree, BTreeNode, NodeRef};
 
 #[derive(Debug)]
 pub struct IBTreeNode<V> {
@@ -12,7 +14,7 @@ pub struct IBTreeNode<V> {
 
 #[derive(Debug)]
 pub struct IBTree {
-    pages: Vec<IBTreeNode<String>>,
+    pages: Vec<Arc<RwLock<IBTreeNode<String>>>>,
 }
 
 impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
@@ -196,34 +198,41 @@ impl<V: Clone> BTreeNode<usize, V> for IBTreeNode<V> {
     }
 }
 
+impl<V: Clone> NodeRef<IBTreeNode<V>> for Arc<RwLock<IBTreeNode<V>>>{
+    fn read(&self) -> RwLockReadGuard<IBTreeNode<V>> {
+        todo!()
+    }
+
+    fn write(&self) -> RwLockWriteGuard<IBTreeNode<V>> {
+        todo!()
+    }
+}
+
 impl BTree<usize, String> for IBTree {
     type Node = IBTreeNode<String>;
+    type NodeRef = Arc<RwLock<IBTreeNode<String>>>;
 
     fn add_root_node(&mut self) -> usize {
-        self.pages.push(IBTreeNode {
+        self.pages.push(Arc::new(RwLock::new(IBTreeNode {
             parent: None,
             keys: vec![],
             next: None,
             values: Err(vec![]),
-        });
+        })));
         self.pages.len() - 1
     }
 
-    fn node_ref(&self, i: usize) -> &IBTreeNode<String> {
-        &self.pages[i]
-    }
-
-    fn node_mut(&mut self, i: usize) -> &mut IBTreeNode<String> {
-        &mut self.pages[i]
+    fn get_node(&self, i: usize) -> Self::NodeRef {
+        self.pages[i].clone()
     }
 
     fn push(&mut self, node: IBTreeNode<String>) -> usize {
-        self.pages.push(node);
+        self.pages.push(Arc::new(RwLock::new(node)));
         self.pages.len() - 1
     }
 
     fn swap(&mut self, i: usize, mut node: IBTreeNode<String>) -> IBTreeNode<String> {
-        std::mem::swap(&mut node, &mut self.pages[i]);
+        std::mem::swap(&mut node, self.pages[i].get_mut().unwrap());
         node
     }
 }
@@ -245,12 +254,12 @@ impl<V: Clone> IBTreeNode<V> {
 impl IBTree {
     pub fn new() -> Self {
         IBTree {
-            pages: vec![IBTreeNode {
+            pages: vec![Arc::new(RwLock::new(IBTreeNode {
                 parent: None,
                 keys: vec![],
                 next: None,
                 values: Err(vec![]),
-            }],
+            }))],
         }
     }
 
@@ -280,7 +289,7 @@ impl IBTree {
         node_i: usize,
         key: &usize,
     ) -> Option<String> {
-        let node = self.node_ref(node_i);
+        let node = self.get_node(node_i);
         if node.is_leaf(meta) {
             node.get(meta, key)
         } else {
