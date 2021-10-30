@@ -1,6 +1,6 @@
-use std::{fs::File, io::Cursor};
+use std::{fs::File, io::Cursor, sync::{Arc, Mutex}};
 
-pub const PAGE_SIZE: u64 = 4 * 1024;
+pub const PAGE_SIZE: u64 = 4 * 64;
 
 pub type PageRaw = [u8; PAGE_SIZE as usize];
 
@@ -23,7 +23,7 @@ struct PageContainer<P: Page> {
 pub struct Pager<P: Page> {
     file: Cursor<File>,
     file_len: u64,
-    pages: Vec<Option<PageContainer<P>>>,
+    pages: Vec<Option<Arc<Mutex<PageContainer<P>>>>>,
 }
 
 impl<P: Page> Pager<P> {
@@ -49,14 +49,17 @@ impl<P: Page> Pager<P> {
         self.pages.len()
     }
 
+    // If the page isn't exist, issues new page.
     pub fn ensure_page(&mut self, i: usize) {
         self.get_mut_inner(i);
     }
 
+    // Get a page but don't extends pages.
     pub fn get_ref(&self, i: usize) -> &P {
         &self.pages[i].as_ref().unwrap().page
     }
 
+    // Get a page. If the page isn't exist, issues new page.
     pub fn get_mut(&mut self, i: usize) -> &mut P {
         let container = self.get_mut_inner(i);
         container.modified = true; //?
@@ -65,10 +68,10 @@ impl<P: Page> Pager<P> {
 
     fn get_mut_inner(&mut self, i: usize) -> &mut PageContainer<P> {
         if self.pages.len() == i {
-            self.pages.push(Some(PageContainer {
+            self.pages.push(Some(Arc::new(Mutex::new(PageContainer {
                 page: P::from([0; PAGE_SIZE as usize]),
                 modified: false,
-            }));
+            }))));
         }
         if self.pages[i].is_none() {
             let mut pages_num = (self.file_len / PAGE_SIZE) as usize;
@@ -80,10 +83,10 @@ impl<P: Page> Pager<P> {
                 self.file.set_position(i as u64 * PAGE_SIZE);
                 let mut buf = [0; PAGE_SIZE as usize];
                 std::io::Read::read(self.file.get_mut(), &mut buf).unwrap();
-                self.pages[i] = Some(PageContainer {
+                self.pages[i] = Some(Arc::new(Mutex::new(PageContainer {
                     page: P::from(buf),
                     modified: false,
-                });
+                })));
             }
         }
         self.pages[i].as_mut().unwrap()
@@ -99,10 +102,10 @@ impl<P: Page> Pager<P> {
 
     pub fn swap(&mut self, i: usize, page: P) -> P {
         self.pages[i]
-            .replace(PageContainer {
+            .replace(Arc::new(Mutex::new(PageContainer {
                 page,
                 modified: true,
-            })
+            })))
             .unwrap()
             .page
     }

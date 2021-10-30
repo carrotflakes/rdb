@@ -1,6 +1,6 @@
 use tokio::sync::RwLock;
 
-use crate::{data::Data, file::File, lock::Lock, query};
+use crate::{data::Data, file::File, lock::Lock, query, schema::Schema};
 
 pub struct LockedStorage {
     storage: RwLock<File>,
@@ -18,7 +18,10 @@ impl LockedStorage {
     pub async fn select(&self, select: &query::Select) -> Result<(Vec<String>, Vec<Data>), String> {
         // TODO: lock
 
-        let mut storage = self.storage.read().await;
+        // let mut storage = self.storage.read().await;
+
+        // Ok((columns, rows))
+
         todo!()
     }
 }

@@ -110,3 +110,43 @@ insert:
   table: message
   select: ...
 ```
+
+```
+Transaction
+     ↓
+Local storage
+     ↓
+Lock
+     ↓
+Remote storage
+```
+
+Select
+Insert
+  Select
+Update
+  Select
+Delete
+  Select
+
+## tables
+
+- id
+- name
+
+## columns
+
+- id
+- table_id
+- name
+
+## indices
+
+- id 
+- table_name
+
+## index_keys
+
+- id
+- iterate_id
+- column_id

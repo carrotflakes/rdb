@@ -25,5 +25,4 @@ async fn main() {
         notify3.notify_waiters();
     // });
         sleep_until(Instant::now() + Duration::from_millis(500)).await;
-
 }

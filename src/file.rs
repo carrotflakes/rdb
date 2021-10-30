@@ -4,16 +4,7 @@
 // インデックスの追加
 // 行のCRUD操作
 
-use crate::{
-    btree::{BTree, BTreeCursor},
-    data::{data_vec_from_bytes, data_vec_to_bytes, Data, Type},
-    disk_cache::DiskCache,
-    disk_cache_btree::Meta,
-    object_store::*,
-    record_store::{self, RecordStore},
-    schema::{self, Schema},
-    util::bytes::parse_u32,
-};
+use crate::{btree::{BTree, BTreeCursor}, data::{data_vec_from_bytes, data_vec_to_bytes, Data, Type}, disk_cache::DiskCache, disk_cache_btree::Meta, iterate::Iterate, object_store::*, record_store::{self, RecordStore}, schema::{self, Schema}, util::bytes::parse_u32};
 
 pub struct File {
     disk_cache: DiskCache,
@@ -268,6 +259,143 @@ impl File {
     }
 
     // fn flush(&self);
+}
+
+impl Iterate for File {
+    type IterateIndex = IteratorIndex;
+    type Item = Vec<u8>;
+    type Cursor = FileCursor;
+
+    fn first_cursor(&self, iterate_index: Self::IterateIndex) -> Self::Cursor {
+        let iterator = &self.iterators[iterate_index.0];
+        let cursor = if let Some(index_info) = &iterator.index_info {
+            Cursor::BTreeCursor(
+                self.disk_cache
+                    .first_cursor(&index_info.btree_meta, index_info.node_id),
+            )
+        } else {
+            let record_store = &self.tables[iterator.table_index].record_store;
+            Cursor::RecordStoreCursor(record_store.first_cursor())
+        };
+
+        FileCursor {
+            iterator_index: iterate_index,
+            cursor,
+        }
+    }
+
+    fn find(&self, iterate_index: Self::IterateIndex, item: &Self::Item) -> Self::Cursor {
+       
+        let iterator = &self.iterators[iterate_index.0];
+        let cursor = if let Some(index_info) = &iterator.index_info {
+            Cursor::BTreeCursor(
+                self.disk_cache
+                    .find(&index_info.btree_meta, index_info.node_id, item)
+                    .0,
+            )
+        } else {
+            // TODO?
+            let record_store = &self.tables[iterator.table_index].record_store;
+            Cursor::RecordStoreCursor(record_store.first_cursor())
+        };
+
+        FileCursor {
+            iterator_index: iterate_index,
+            cursor,
+        }
+    }
+
+    fn cursor_get(&self, cursor: &Self::Cursor) -> Option<Self::Item> {
+        let iterator = &self.iterators[cursor.iterator_index.0];
+        let table = &self.schema.tables[iterator.table_index];
+        let record_store = &self.tables[iterator.table_index].record_store;
+        let cursor = if let Some(index_info) = &iterator.index_info {
+            match &cursor.cursor {
+                Cursor::BTreeCursor(cursor) => {
+                    let (_, value) = self.disk_cache.cursor_get(&index_info.btree_meta, cursor)?;
+                    record_store::Cursor::from(parse_u32(&value))
+                }
+                _ => panic!(),
+            }
+        } else {
+            match &cursor.cursor {
+                Cursor::RecordStoreCursor(cursor) => cursor.clone(),
+                _ => panic!(),
+            }
+        };
+
+        record_store
+            .cursor_get(&self.disk_cache, &cursor)
+            // .and_then(|bytes| {
+            //     data_vec_from_bytes(
+            //         &table
+            //             .columns
+            //             .iter()
+            //             .map(|c| c.dtype.clone())
+            //             .collect::<Vec<_>>(),
+            //         &bytes,
+            //     )
+            // })
+    }
+
+    fn cursor_next(&self, cursor: &mut Self::Cursor) -> bool {
+        let iterator = &self.iterators[cursor.iterator_index.0];
+        if let Some(index_info) = &iterator.index_info {
+            match &mut cursor.cursor {
+                Cursor::BTreeCursor(cursor) => {
+                    *cursor = self
+                        .disk_cache
+                        .cursor_next(&index_info.btree_meta, cursor.clone());
+                }
+                _ => panic!(),
+            }
+        } else {
+            match &mut cursor.cursor {
+                Cursor::RecordStoreCursor(cursor) => {
+                    let record_store = &self.tables[iterator.table_index].record_store;
+                    *cursor = record_store.cursor_next(&self.disk_cache, cursor);
+                }
+                _ => panic!(),
+            }
+        }
+        true
+    }
+
+    fn cursor_next_occupied(&self, cursor: &Self::Cursor) -> Self::Cursor {
+        todo!()
+    }
+
+    fn cursor_is_end(&self, cursor: &Self::Cursor) -> bool {
+        let iterator = &self.iterators[cursor.iterator_index.0];
+        if let Some(index_info) = &iterator.index_info {
+            match &cursor.cursor {
+                Cursor::BTreeCursor(cursor) => self
+                    .disk_cache
+                    .cursor_is_end(&index_info.btree_meta, cursor),
+                _ => panic!(),
+            }
+        } else {
+            match &cursor.cursor {
+                Cursor::RecordStoreCursor(cursor) => {
+                    let record_store = &self.tables[iterator.table_index].record_store;
+                    record_store.cursor_is_end(&self.disk_cache, cursor)
+                }
+                _ => panic!(),
+            }
+        }
+    }
+
+    fn cursor_delete(&mut self, cursor: &Self::Cursor) -> bool {
+        todo!()
+    }
+
+    fn cursor_update(&mut self, cursor: &Self::Cursor, item: Self::Item) -> bool {
+        todo!()
+    }
+
+    fn add(&mut self, iterate_index: Self::IterateIndex, item: Self::Item) -> bool {
+        todo!()
+    }
 }
 
 impl File {
